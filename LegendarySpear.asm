@@ -3,7 +3,7 @@
     include "macro.h"
 
 NTSC = 0
-PAL = 1
+PAL60 = 1
 
     IFNCONST SYSTEM
 SYSTEM = NTSC
