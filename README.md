@@ -1,6 +1,6 @@
 # Legendary Spear
 
-Play the game on [Javatari.org!](https://javatari.org/?ROM=https://github.com/DChristianson/atari-vcs-samples/blob/main/rom/LegendarySpear.rom?raw=true)
+Play the game on [Javatari.org!](https://javatari.org/?ROM=https://github.com/DChristianson/legendary-spear/releases/download/v0.5.1/LegendarySpear_NTSC.bin)
 
 You control a lone Samurai riding against wave after wave of enemy cavalry.
 
