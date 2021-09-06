@@ -205,14 +205,14 @@ scoringLoop
             and #$80
             beq scoringLoop_end
             ; hit scored
-            cpy #RIDER_ROCK_TYPE
-            beq scoringLoop_player_hit
-            lda player_fire
-            beq scoringLoop_player_hit
-scoringLoop_rider_hit
             lda #$04
             sec
             sbc rider_speed,x
+            cpy #RIDER_ROCK_TYPE
+            beq scoringLoop_player_hit
+            ldy player_fire
+            beq scoringLoop_player_hit
+scoringLoop_rider_hit
             sed
             clc
             adc player_score
@@ -225,7 +225,11 @@ scoringLoops_save_score
             sta rider_damaged,x
             jmp scoringLoop_end
 scoringLoop_player_hit
+            tay
+scoringLoop_player_hit_shift
             asl player_health
+            dey
+            bne scoringLoop_player_hit_shift
             lda #$10
             sta player_damaged
             lda #$0
