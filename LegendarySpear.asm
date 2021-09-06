@@ -53,8 +53,8 @@ RIDER_ANIMATE_SPEED = 3
 PLAYER_ANIMATE_SPEED = 3
 PLAYER_STRIKE_COUNT = 48
 RIDER_RESP_START = $b8
-RIDER_GREEN_TYPE = $08
-RIDER_ROCK_TYPE = $10
+RIDER_GREEN_TYPE = GREEN
+RIDER_ROCK_TYPE = $00
 RAIL_HEIGHT = 6
 LOGO_HEIGHT = 6
 WINNING_SCORE = $99
@@ -72,7 +72,7 @@ rider_graphics  ds 2
 rider_timer     ds 5
 rider_hpos      ds 5
 rider_colors    ds 5
-rider_type      ds 5
+rider_speed     ds 5
 rider_hit       ds 5
 rider_damaged   ds 5
 rider_pattern   ds 1
@@ -136,7 +136,7 @@ init_game
             ldx #NUM_RIDERS - 1
 init_rider_loop
             lda #RIDER_GREEN_TYPE
-            sta rider_type,x
+            sta rider_colors,x
             lda #$70
             sta rider_hpos,x
             lda #$ff
@@ -195,10 +195,9 @@ vBlank      sta WSYNC
             sta player_damaged
 scoringLoop
             sta WSYNC
-            lda rider_type,x
+            lda rider_colors,x
             cmp #RIDER_GREEN_TYPE
             beq scoringLoop_end  
-            and #$0f
             tay                   ; store if it's a rock
             lda rider_damaged,x
             bpl scoringLoop_decay
@@ -206,15 +205,20 @@ scoringLoop
             and #$80
             beq scoringLoop_end
             ; hit scored
-            cpy #$00
+            cpy #RIDER_ROCK_TYPE
             beq scoringLoop_player_hit
             lda player_fire
             beq scoringLoop_player_hit
 scoringLoop_rider_hit
+            lda #$04
+            sec
+            sbc rider_speed,x
             sed
-            lda player_score
             clc
-            adc #$01
+            adc player_score
+            bcc scoringLoops_save_score
+            lda #WINNING_SCORE
+scoringLoops_save_score
             sta player_score
             cld
             lda #$10
@@ -229,11 +233,11 @@ scoringLoop_player_hit
 scoringLoop_decay
             dec rider_damaged,x
             bmi scoringLoop_rider_clear
-            inc rider_type,x
+            inc rider_colors,x
             jmp scoringLoop_end
 scoringLoop_rider_clear
             lda #RIDER_GREEN_TYPE
-            sta rider_type,x
+            sta rider_colors,x
 scoringLoop_end
             dex
             bpl scoringLoop
@@ -434,11 +438,7 @@ moveRider_loop
             beq moveRider_noreset     ;2   5
             dec rider_timer,x         ;6  11
             bpl moveRider_noreset     ;2  13
-            lda rider_type,x          ;4  17
-            lsr                       ;2  19
-            lsr                       ;2  21
-            lsr                       ;2  23
-            lsr                       ;2  25
+            lda rider_speed,x         ;4  17
             sta rider_timer,x         ;4  29
             lda #$10                  ;2  31
             clc                       ;2  33
@@ -447,45 +447,40 @@ moveRider_loop
             sta rider_hpos,x          ;4  43  
             jmp moveRider_noreset     ;3  46
 moveRider_dec_hdelay
-            adc #$0f
-            cmp #$8f 
-            beq moveRider_reset
-            sta rider_hpos,x      ;4  46  
-            jmp moveRider_noreset ;2  54
+            adc #$0f              ;2  42
+            cmp #$8f              ;2  44
+            beq moveRider_reset   ;2  46
+            sta rider_hpos,x      ;4  50  
+            jmp moveRider_noreset ;2  53
 moveRider_reset
             ; reset rider
             lda #RIDER_RESP_START  ;2  56
-            sta rider_damaged,x
-            sta rider_hpos,x       ;4  60
-            lda rider_pattern      ;3  69 ; Galois LFSA
-            lsr                    ;2  71 ; see https://samiam.org/blog/20130617.html
-            bcc moveRider_skipEor  ;2  73
+            sta rider_damaged,x    ;3  59
+            sta rider_hpos,x       ;4  --
+            lda rider_pattern      ;3  -- ; Galois LFSA
+            lsr                    ;2  -- ; see https://samiam.org/blog/20130617.html
+            bcc moveRider_skipEor  ;2  --
             eor #$8e               ;2  75
 moveRider_skipEor 
             sta rider_pattern      ;3  78 
-            tay
-            bcc moveRider_chooseColor ;2  69
-            lda #RIDER_GREEN_TYPE     ;2  71
-            jmp moveRider_skipCycle   ;3  74
-            lsr                       ;2  67
-            bcc moveRider_chooseColor ;2  69
-            lda #RIDER_ROCK_TYPE      ;2  71
-            jmp moveRider_skipCycle   ;3  74
-moveRider_chooseColor
-            tya
-            and game_state         ;3   81
-
-moveRider_skipCycle
-            sta rider_type,x       ;4   85
-            jmp moveRider_end      ;3   88
-moveRider_noreset
-            sta WSYNC              ;3    0
-moveRider_end
-            lda rider_type,x
             and #$0f
             tay
             lda RIDER_COLORS,y
-            sta rider_colors,x
+            sta rider_colors,X
+            beq moveRider_parallax
+            tya 
+            and #$03
+            jmp moveRider_setSpeed
+moveRider_parallax
+            txa
+            adc #$02
+            lsr
+moveRider_setSpeed
+            sta rider_speed,x
+            jmp moveRider_end
+moveRider_noreset
+            sta WSYNC              ;3    0
+moveRider_end
             dex                    ;2   90
             bpl moveRider_loop     ;2   92
 
@@ -1245,9 +1240,9 @@ ROCK_0_CTRL
 ROCK_0_GRAPHICS
     byte $0,$fc,$f8,$f8,$ff,$7e,$fc,$fe,$fe,$7e,$fc,$fe,$f8,$fc,$f8,$ff,$ff,$fe,$ff,$7e,$fe,$fc,$f8,$c0; 24
 
-RIDER_COLORS ; 9 bytes
-        byte BLACK, BROWN, RED, WHITE, YELLOW, RED, WHITE, YELLOW, GREEN
-
+RIDER_COLORS ; 16 bytes
+        byte BLACK, BLACK, BLACK, BLACK, GREEN, GREEN, GREEN, GREEN, BROWN, RED, WHITE, YELLOW, BROWN, RED, WHITE, YELLOW
+        
 HORIZON_COLOR ; 14 bytes
         byte CLOUD_ORANGE - 2, CLOUD_ORANGE, CLOUD_ORANGE + 2, CLOUD_ORANGE + 4, SKY_YELLOW, SKY_YELLOW + 2, SKY_YELLOW + 4, SKY_YELLOW + 2, SKY_YELLOW, WHITE_WATER, SKY_BLUE + 8, SKY_BLUE + 4, SKY_BLUE + 2, SKY_BLUE 
 HORIZON_COUNT ; 14 bytes
