@@ -100,21 +100,9 @@ tmp_addr_1    ds 2 ; used in scoring kernels
     ORG $F000
 
 Reset
-    ; clear cld
-            cld
 
-    ; set TIA to known state (clear to 0)
-
-            lda #0
-            ldx #$3f
-.zapTIA     sta 0,x
-            dex
-            bpl .zapTIA
-
-            ldx #127
-.zapRAM     sta $80,x
-            dex
-            bpl .zapRAM
+    ; do the clean start macro
+            CLEAN_START
 
   ; black playfield sidebars, on top of players
             lda #$30
@@ -147,11 +135,6 @@ init_rider_loop
             ldx #$28
             stx player_vpos
             stx rider_pattern
-
-            ; clear stack?
-            ; BUGBUG broken
-            ; ldx #$ff
-            ; txs
 
 newFrame
 
@@ -295,6 +278,7 @@ stackPlayer_load_addr
 stackPlayer_loop
             cpy #RIDER_HEIGHT
             bpl stackPlayer_loop_end
+            cpy #0
             php
             lda (tmp_addr_0),y  
             pha
@@ -312,7 +296,7 @@ animatePlayer_eval_fire
             jmp animatePlayer_fire_end
 animatePlayer_fire_active
             lda #$ff 
-            sta $dd
+            sta $dc
 animatePlayer_fire_end
 
 ; SL 22
@@ -998,10 +982,10 @@ rider_B_start_l
             ldy rider_hpos,x        ;4  27
             sty HMP1                ;3  30
             plp                     ;4  34
-            bpl rider_B_to_A_resp_m ;2  36
+            beq rider_B_to_A_resp_m ;2  36
             sta HMP0                ;3  39
             lda tmp                 ;3  42
-            sbc #$05                ;2  44 ; should subtract 6 but expect borrow clear due to plp
+            sbc #$06                ;2  44 ; borrow set due to plp
             bmi rider_B_resp_m      ;2  46
             tay                     ;2  48
 rider_B_resp_l; strobe resp
@@ -1014,7 +998,7 @@ rider_B_resp_m
             jmp rider_B_hmov        ;2  68
 rider_B_to_A_resp_m
             lda tmp                 ;3  40
-            sbc #$05                ;2  42 ; should subtract 6 but expect borrow clear due to plp
+            sbc #$06                ;2  42 ; borrow set due to plp
             tay                     ;2  44
             bmi rider_B_to_A_resp_n ;2  46
 rider_B_to_A_resp_l; strobe resp
@@ -1066,7 +1050,7 @@ rider_B_resp_end_0
             lda rider_hpos,x        ;4  59
             sta HMP1                ;3  62
             plp                     ;4  66
-            bpl rider_B_to_A_hmov   ;2  68
+            beq rider_B_to_A_hmov   ;2  68
             sty COLUPF              ;3  71
 
 rider_B_hmov; locating rider horizontally
@@ -1100,7 +1084,7 @@ rider_B_hmov_rock_end
             sta CXCLR               ;3  57 prep for collision
             sta COLUPF              ;3  60
             plp                     ;5  65  exit
-            bpl rider_B_to_A_loop   ;2  67 / 76 (from a)
+            beq rider_B_to_A_loop   ;2  67 / 76 (from a)
 
 rider_B_loop  
             sta WSYNC               ;3   0
@@ -1118,7 +1102,7 @@ rider_B_loop
             sta NUSIZ1              ;3  42
             sta HMP1                ;3  45
             plp                     ;5  50 
-            bpl rider_B_to_A_loop_a ;2  52
+            beq rider_B_to_A_loop_a ;2  52
             lda #$0                 ;3  55
             sta COLUPF              ;3  58
 rider_B_loop_a
@@ -1136,7 +1120,7 @@ rider_B_end
             sta NUSIZ0              ;3  23
             sta HMP0                ;3  26
             plp                     ;4  30  
-            bpl rider_B_to_A_end_a  ;2  32
+            beq rider_B_to_A_end_a  ;2  32
 
 rider_B_end_a
             lda CXPPMM               ;2  34     
