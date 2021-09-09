@@ -156,78 +156,78 @@ newFrame
 
 ;--------------------
 ; VBlank start
-; SL 0-5 
+; SL 0
             lda #1
             sta VBLANK
-            ldx #$05
-vBlank      sta WSYNC
-            dex
-            bne vBlank
-;BUGBUG at 263
+
 ;---------------------
 ; scoring kernel
-; SL 5/6-10
+; SL 0-9
             ldx #NUM_RIDERS - 1 
             dec player_damaged
             bpl scoringLoop
             lda #0
             sta player_damaged
 scoringLoop
-            sta WSYNC
-            lda rider_colors,x
-            cmp #RIDER_GREEN_TYPE
-            beq scoringLoop_end  
-            tay                   ; store if it's a rock
-            lda rider_damaged,x
-            bpl scoringLoop_decay
-            lda rider_hit,x
-            and #$80
-            beq scoringLoop_end
+            sta WSYNC                  ;3   0
+            lda rider_colors,x         ;4   4
+            cmp #RIDER_GREEN_TYPE      ;2   6
+            beq scoringLoop_wsync_end  ;2   8
+            tay                        ;2  10; store if it's a rock
+            lda rider_damaged,x        ;4  14
+            bpl scoringLoop_decay      ;2  16
+            lda rider_hit,x            ;4  20
+            and #$80                   ;2  22
+            beq scoringLoop_wsync_end  ;2  24
             ; hit scored
-            lda #$04
-            sec
-            sbc rider_speed,x
-            cpy #RIDER_ROCK_TYPE
-            beq scoringLoop_player_hit
-            ldy player_fire
-            beq scoringLoop_player_hit
+            lda #$04                   ;2  26
+            sec                        ;2  28
+            sbc rider_speed,x          ;4  32
+            cpy #RIDER_ROCK_TYPE       ;2  34
+            beq scoringLoop_player_hit ;2  36
+            ldy player_fire            ;3  39
+            beq scoringLoop_player_hit ;2  41
 scoringLoop_rider_hit
-            sed
-            clc
-            adc player_score
-            bcc scoringLoops_save_score
-            lda #WINNING_SCORE
-scoringLoops_save_score
-            sta player_score
-            cld
-            lda #$10
-            sta rider_damaged,x
-            jmp scoringLoop_end
+            sed                        ;2  43
+            clc                        ;2  45
+            adc player_score           ;2  47
+            bcc scoringLoop_save_score ;2  49
+            lda #WINNING_SCORE         ;2  51
+scoringLoop_save_score
+            sta player_score           ;3  54
+            cld                        ;2  56
+            lda #$10                   ;2  58
+            sta rider_damaged,x        ;4  62
+            jmp scoringLoop_wsync_end        ;3  65
 scoringLoop_player_hit
-            tay
+            tay                        ;2  44
 scoringLoop_player_hit_shift
-            asl player_health
-            dey
-            bne scoringLoop_player_hit_shift
-            lda #$10
-            sta player_damaged
-            lda #$0
-            sta player_charge
+            asl player_health          ;5  49
+            dey                        ;2  51
+            bne scoringLoop_player_hit_shift ;2  88 (53 + 4 * 70
+            lda #$10                   ;3  91
+            sta player_damaged         ;3  94
+            sty player_charge          ;3  97
+            lda #$10                   ;2  58
+            sta rider_damaged,x        ;4  62
+            jmp scoringLoop_end        ;3  65
 scoringLoop_decay
             dec rider_damaged,x
             bmi scoringLoop_rider_clear
             inc rider_colors,x
-            jmp scoringLoop_end
+            jmp scoringLoop_wsync_end
 scoringLoop_rider_clear
             lda #RIDER_GREEN_TYPE
             sta rider_colors,x
+scoringLoop_wsync_end
+            sta WSYNC
 scoringLoop_end
             dex
             bpl scoringLoop
 
 ;-----------------------------
 ; animate player
-; SL 11-12 (-26 till picture)
+; SL 10-12 (-26 till picture)
 animatePlayer
             sta WSYNC
             ldy player_tile
@@ -251,7 +251,6 @@ animatePlayer_save
 animatePlayer_end
 
  ; now that we have the player tile, load it up
-            sta WSYNC
             clc
             lda #<PLAYER_SPRITE_START
             dey
@@ -1118,8 +1117,7 @@ rider_B_prestart_jmp
             jmp rider_B_prestart     ;3  46
 
 rider_B_to_A_loop
-            lda #$0
-            sta ENABL
+            sta ENABL               ;3  73 ; a already 0
             sta WSYNC               ;3   0
             sta HMOVE               ;3   3 ; process hmoves
             jmp rider_A_loop_body   ;3   6
