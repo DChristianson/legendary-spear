@@ -66,6 +66,7 @@ WINNING_SCORE = $99
     ORG $80
 
 game_state      ds 1
+game_dark       ds 1
 rider_animate   ds 1
 rider_ctrl      ds 2
 rider_timer     ds 5
@@ -131,6 +132,8 @@ init_rider_loop
             ldx #$28
             stx player_vpos
             stx rider_pattern
+            ldx #$0f
+            stx game_dark
 
 newFrame
 
@@ -205,7 +208,7 @@ scoringLoop_player_hit_shift
             asl player_health          ;5  49
             dey                        ;2  51
             bne scoringLoop_player_hit_shift ;2  88 (53 + 4 * 70
-            lda #$10                   ;3  91
+            lda #$20                   ;3  91
             sta player_damaged         ;3  94
             sty player_charge          ;3  97
             lda #$10                   ;2  58
@@ -240,6 +243,10 @@ animatePlayer
 animatePlayer_seq
             dec player_animate
             bpl animatePlayer_end
+            lda game_dark
+            beq animatePlayer_go
+            dec game_dark
+animatePlayer_go 
             lda #PLAYER_ANIMATE_SPEED
             sta player_animate
             iny
@@ -310,13 +317,13 @@ movePlayer_game
 movePlayer_game_check
             lda player_charge
             beq movePlayer_end
-            lda #$0
+            lda player_score
+            ora player_health
+            bne movePlayer_end
             sta player_charge
-            sta player_score
             ldx #$ff
             stx player_health
-            lda #$37
-            sta game_state
+            inc game_state
             jmp movePlayer_end
 
 movePlayer
@@ -427,6 +434,7 @@ moveRider_dec_hdelay
             jmp moveRider_noreset ;2  53
 moveRider_reset
             ; reset rider
+            inc game_state         ;5  --
             lda #RIDER_RESP_START  ;2  56
             sta rider_damaged,x    ;3  59
             sta rider_hpos,x       ;4  --
@@ -513,18 +521,19 @@ horizonScore_resp
 
 ; SL 38-45
 horizonScore_Loop
-            sta WSYNC
             lda player_health        ;3   3
-            sta PF1                  ;3   6
-            lda HORIZON_COLOR,x      ;4  10 
-            sta COLUBK               ;3  13
-            lda (tmp_addr_0),y       ;5  18
-            sta GRP0                 ;3  21
-            lda #RED                 ;2  23
-            sta COLUPF               ;3  26
-            lda (tmp_addr_1),y       ;5  31
-            sta GRP1                 ;3  34
-            SLEEP 5
+            sta WSYNC
+            sta PF1                  ;3   3
+            lda HORIZON_COLOR,x      ;4   7 
+            sec                      ;2   9
+            sbc game_dark            ;3  12
+            sta COLUBK               ;3  15
+            lda (tmp_addr_0),y       ;5  20
+            sta GRP0                 ;3  23
+            lda #RED                 ;2  25
+            sta COLUPF               ;3  28
+            lda (tmp_addr_1),y       ;5  33
+            sta GRP1                 ;3  36
             lda #$00
             sta COLUPF
             sta PF1
@@ -540,57 +549,63 @@ horizonScore_End
 
 ; horizon + sun kernel 
 ; SL 46
-            ldy #$04                 ;2  48
             sta WSYNC
             lda HORIZON_COLOR,x      ;4   4 
-            sta COLUBK               ;3   7
-            lda #0                   ;2   9
-            sta GRP0                 ;3  12
-            sta GRP1                 ;3  15
+            sec                      ;2   6
+            sbc game_dark            ;3   9
+            sta COLUBK               ;3  12
+            lda #0                   ;2  14
+            sta GRP0                 ;3  17
+            sta GRP1                 ;3  20
+            ldy #$03                 ;2  22
 horizonSun_resp
-            dey                      ;2  17
-            bpl horizonSun_resp      ;2  39 (19 + 20)
-            sta RESP0                ;3  42
-            sta RESP1                ;3  45
-            lda #0                   ;2  47
-            sta HMP0                 ;3  50
-            sta NUSIZ1               ;3  53
-            lda #$10                 ;2  55
-            sta HMP1                 ;3  58
-            lda #1                   ;2  60             
-            sta NUSIZ0               ;3  63
+            dey                      ;2  24
+            bpl horizonSun_resp      ;2  41 (26 + 15)
+            sta RESP0                ;3  44
+            sta RESP1                ;3  47
+            sta NUSIZ1               ;3  50
+            lda #$10                 ;2  52
+            sta HMP0                 ;3  55
+            lda #$20                 ;2  57
+            sta HMP1                 ;3  60
+            lda #1                   ;2  62             
+            sta NUSIZ0               ;3  65
 
 ; SL 47
-horizonSun_hmov
             sta WSYNC                ;3   0
             sta HMOVE                ;3   3
             lda HORIZON_COLOR,x      ;4   4 
-            sta COLUBK               ;3   7
-            lda #SUN_RED             ;2   5
-            sta COLUP0               ;3   8
-            sta COLUP1               ;3  11
-            dex                      ;2  13 ; hardcode
+            sec                      ;2   6
+            sbc game_dark            ;3   9
+            sta COLUBK               ;3  12
+            lda #SUN_RED             ;2  17
+            sta COLUP0               ;3  20
+            sta COLUP1               ;3  23
+            dex                      ;2  25 ; hardcode
 
 ; SL 48 ... 72
+            
 
             ldy #24                  ;2  15
 horizonLoop
             sta WSYNC                ;3   0 
             lda HORIZON_COLOR,x      ;4   4 
-            sta COLUBK               ;3   7
-            lda SUN_SPRITE_LEFT,y    ;4  11 
-            sta GRP0                 ;3  14
-            lda SUN_SPRITE_MIDDLE,y  ;4  18  
-            sta GRP1                 ;3  21
-            lda #0                   ;2  23
-            sta REFP0                ;3  26
-            dey                      ;2  28
-            bmi horizonEnd           ;2  30
-            clc                      ;2  32
-            lda #2                   ;2  34
+            sec                      ;2   6
+            sbc game_dark            ;3   9
+            sta COLUBK               ;3  12
+            lda SUN_SPRITE_LEFT,y    ;4  16 
+            sta GRP0                 ;3  19
+            lda SUN_SPRITE_MIDDLE,y  ;4  23  
+            sta GRP1                 ;3  26
+            lda #0                   ;2  28
+            sta REFP0                ;3  31
+            dey                      ;2  33
+            bmi horizonEnd           ;2  35
+            clc                      ;2  37
+            lda #1                   ;2  39
 horizonLoop_refp
-            sbc #1                   ;2  36
-            bpl horizonLoop_refp     ;2  48 (38 + 10)
+            sbc #1                   ;2  41
+            bpl horizonLoop_refp     ;2  48 (43 + 5)
             lda #8                   ;2  50
             sta REFP0                ;3  53
             tya                      ;2  55
@@ -599,6 +614,23 @@ horizonLoop_refp
             dex                      ;2  62
             jmp horizonLoop          ;3  65
 horizonEnd
+
+;-------------------
+; top rail kernel
+
+    ; SC 73 .. 78
+            ldx #RAIL_HEIGHT / 2 - 1 ;2  10
+rail_A_loop 
+            sta WSYNC                ;3   0
+            lda MOUNTAIN_PF0,x
+            sta PF0
+            lda MOUNTAIN_PF1,x
+            sta PF1
+            lda MOUNTAIN_PF2,x
+            sta PF2
+            sta WSYNC                ;3   0
+            dex                      ;2   2
+            bpl rail_A_loop          ;2   4
             lda #0                   ;2  33
             sta GRP0                 ;3  36
             sta GRP1                 ;3  39
@@ -612,73 +644,60 @@ horizonEnd
 ;
 ; locating player first
 ;
-    ; SC 73           
+    ; SC 79           
             sta WSYNC                ;3   0
-            lda #GREEN               ;2   2
-            sta COLUBK               ;3   5
-            ldy #4                   ;2   7
+            ldx #PLAYER_COLOR        ;2   2
+            lda player_vpos          ;3   3 
+            ldy #3                   ;2   7
 player_resp_loop
             dey                      ;2   9
-            bpl player_resp_loop     ;2  11 + 20 = 31
-            sta RESP0                ;3  34
-            lda #PLAYER_COLOR        ;2  36
-            sta COLUP0               ;3  39
-            lda player_vpos          ;3  42 
-            sta player_vdelay        ;3  45
-
-    ; SC 74
-            sta WSYNC                ;3   0
-            lda player_hmov          ;3   3
-            ldy #4                   ;2   5
-yari_resp_loop
-            dey                      ;2   7
-            bpl yari_resp_loop       ;2   9 + 20 = 29
-            sta RESBL                ;3  32
-            sta HMP0                 ;3  35
+            bpl player_resp_loop     ;2  11 + 15 = 26
+            sta RESBL                ;3  29
+            sta RESP0                ;3  32
+            stx COLUP0               ;3  39
+            sta player_vdelay        ;3  41
+            lda player_hmov          ;3  44
+            sta HMP0                 ;3  48
             sta HMBL                 ;3  38
 
-    ; SC 75
+    ; SC 80
             sta WSYNC                ;3   0
             sta HMOVE                ;3   3
-            ldx #$03                 ;3   6
-player_boost_delay
-            dex                      ;2   8
-            bpl player_boost_delay   ;2  25 (10 + 3 * 5)
-            lda player_hmov_x        ;3  28
-            sta HMP0                 ;3  31
-            lda #$00                 ;2  33
-            sta HMBL                 ;3  36
-
-    ; SC 76
-            sta WSYNC                ;3   0
-            sta HMOVE                ;3   3
-
-;-------------------
-; top rail kernel
-
-    ; SC 77 .. 85
-            ldx #RAIL_HEIGHT         ;2  10
-rail_A_loop 
-            sta WSYNC                ;3   0
-            dex                      ;2   2
-            bne rail_A_loop          ;2   4
+            lda #$30                 ;2   5
+            sta PF0                  ;3   8
+            lda #$00                 ;2  10
+            sta PF1                  ;3  13
+            sta PF2                  ;3  16
+            lda #BLACK               ;2  18
+            sta COLUBK               ;3  21
+            lda player_hmov_x        ;3  24
+            sta HMP0                 ;3  27
+            lda #$d0                 ;3  30
+            sta HMBL                 ;3  33
 
 ;--------------------
-; riders kernel
+; transition to riders kernel
 ; x loaded with current rider 
 ; y used for rider graphics index
 ; sp used for player graphics index
 
-
-    ; SC 86 .. 219 (27 * 5)
+    ; SC 81
+            sta WSYNC                ;3   0
+            sta HMOVE                ;3   3
+            ldx #>RIDER_SPRITE_START ;2   5
+            stx tmp_addr_0+1         ;3   8
+            stx tmp_addr_1+1         ;3  11
+            lda #GREEN               ;2  13
+            sta COLUBK               ;3  16
+            lda #$00                 ;2  18
+            sta CXCLR                ;3  21
+            ldx #NUM_RIDERS - 1      ;2  23
+            sta HMBL                 ;3  26
+            sta HMP0                 ;3  29
 riders_start
-            stx HMP0                 ;3   7
-            sta CXCLR                ;3  13
-            lda #>RIDER_SPRITE_START
-            sta tmp_addr_0+1
-            sta tmp_addr_1+1
-            ldx #NUM_RIDERS - 1      ;2  15
-            jmp rider_A_prestart     ;3  17
+            jmp rider_A_prestart     ;3  32
+
+    ; SC 82 .. 216 (27 * 5)
 
 riders_end
 
@@ -716,15 +735,14 @@ gameCheck
             lda player_score
             cmp #WINNING_SCORE
             beq gameEnd
-            and #$30
-            eor game_state
-            sta game_state
 gameCheckHealth
             lda player_health
             bne gameContinue
 gameEnd
             lda #0
             sta game_state
+            lda #$0f
+            sta game_dark
 gameContinue
             jmp newFrame
 
@@ -1188,6 +1206,13 @@ SUN_SPRITE_LEFT ; 26
         byte $ff,$ff,$ff,$ff,$7f,$7f,$7f,$7f,$3f,$3f,$3f,$1f,$1f,$f,$f,$7,$3,$1,$0,$0,$0,$0,$0,$0,$0
 SUN_SPRITE_MIDDLE ; 26
         byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$3c,$0,$0,$0,$0,$0
+
+MOUNTAIN_PF0 ; 4
+        byte $ff, $f0, $f0
+MOUNTAIN_PF1 ; 4
+        byte $ff, $f3, $c0
+MOUNTAIN_PF2 ; 4
+        byte $ff, $3f, $0f
 
     ORG $F700
 
