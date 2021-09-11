@@ -21,12 +21,12 @@ SUN_RED = $30
 CLOUD_ORANGE = $22
 GREY_SCALE = $02 
 WHITE_WATER = $0A
-GREEN = $B2
-RED = $42
-YELLOW = $1E
-WHITE = $0E
+GREEN = $B3
+RED = $43
+YELLOW = $1f
+WHITE = $0f
 BLACK = 0
-BROWN = $F0
+BROWN = $F1
 #else
 ; PAL Colors
 ; Mapped by Al_Nafuur @ AtariAge
@@ -38,11 +38,11 @@ CLOUD_ORANGE = $44
 GREY_SCALE = $02 
 WHITE_WATER = $0A
 GREEN = $72
-RED = $64
+RED = $65
 YELLOW = $2E
 WHITE = $0E
 BLACK = 0
-BROWN = $20
+BROWN = $21
 #endif
 
 RIDER_HEIGHT = 24
@@ -199,25 +199,24 @@ scoringLoop_rider_hit
 scoringLoop_save_score
             sta player_score           ;3  54
             cld                        ;2  56
-            lda #$10                   ;2  58
+            lda #$08                   ;2  58
             sta rider_damaged,x        ;4  62
-            jmp scoringLoop_wsync_end        ;3  65
+            jmp scoringLoop_wsync_end  ;3  65
 scoringLoop_player_hit
             tay                        ;2  44
 scoringLoop_player_hit_shift
-            asl player_health          ;5  49
-            dey                        ;2  51
+            asl player_health          ;5  49 ; bugbug can glitch lines
+            dey                        ;2  51 ; maybe acc damage in tmp, assess later
             bne scoringLoop_player_hit_shift ;2  88 (53 + 4 * 70
-            lda #$20                   ;3  91
+            lda #$08                   ;3  91
             sta player_damaged         ;3  94
-            sty player_charge          ;3  97
-            lda #$10                   ;2  58
+            sty player_charge          ;3  97 note y is 0 now
             sta rider_damaged,x        ;4  62
             jmp scoringLoop_end        ;3  65
 scoringLoop_decay
             dec rider_damaged,x
             bmi scoringLoop_rider_clear
-            inc rider_colors,x
+            rol rider_colors,x
             jmp scoringLoop_wsync_end
 scoringLoop_rider_clear
             lda #RIDER_GREEN_TYPE
@@ -534,7 +533,7 @@ horizonScore_Loop
             sta COLUPF               ;3  28
             lda (tmp_addr_1),y       ;5  33
             sta GRP1                 ;3  36
-            lda #$00
+            lda #$00                      
             sta COLUPF
             sta PF1
             dey                      ;2  23
@@ -568,7 +567,7 @@ horizonSun_resp
             sta HMP0                 ;3  55
             lda #$20                 ;2  57
             sta HMP1                 ;3  60
-            lda #1                   ;2  62             
+            lda #1                   ;2  62  BUGBUG save inst?            
             sta NUSIZ0               ;3  65
 
 ; SL 47
@@ -631,7 +630,7 @@ rail_A_loop
             sta WSYNC                ;3   0
             dex                      ;2   2
             bpl rail_A_loop          ;2   4
-            lda #0                   ;2  33
+            lda #0                   ;2  33 BUGBUG save inst
             sta GRP0                 ;3  36
             sta GRP1                 ;3  39
             sta REFP0                ;3  42
@@ -646,7 +645,8 @@ rail_A_loop
 ;
     ; SC 79           
             sta WSYNC                ;3   0
-            ldx #PLAYER_COLOR        ;2   2
+            ;ldx #PLAYER_COLOR       ;2   2 save instr (replace with inx)
+            inx                      ;2   2 x was ff
             lda player_vpos          ;3   3 
             ldy #3                   ;2   7
 player_resp_loop
@@ -665,11 +665,11 @@ player_resp_loop
             sta HMOVE                ;3   3
             lda #$30                 ;2   5
             sta PF0                  ;3   8
-            lda #$00                 ;2  10
-            sta PF1                  ;3  13
-            sta PF2                  ;3  16
-            lda #BLACK               ;2  18
-            sta COLUBK               ;3  21
+            ;ldx #$00                 ;2  10 save instr (x is 0)
+            stx PF1                  ;3  13
+            stx PF2                  ;3  16
+            ;ldx #BLACK               ;2  18 save inst (x is 0)
+            stx COLUBK               ;3  21
             lda player_hmov_x        ;3  24
             sta HMP0                 ;3  27
             lda #$d0                 ;3  30
@@ -689,11 +689,10 @@ player_resp_loop
             stx tmp_addr_1+1         ;3  11
             lda #GREEN               ;2  13
             sta COLUBK               ;3  16
-            lda #$00                 ;2  18
-            sta CXCLR                ;3  21
-            ldx #NUM_RIDERS - 1      ;2  23
-            sta HMBL                 ;3  26
-            sta HMP0                 ;3  29
+            iny                      ;2  18 ; save instr (y is ff)
+            ldx #NUM_RIDERS - 1      ;2  20
+            sty HMBL                 ;3  23
+            sty HMP0                 ;3  26
 riders_start
             jmp rider_A_prestart     ;3  32
 
@@ -704,23 +703,29 @@ riders_end
 ;--------------------
 ; bottom rail kernel
 ;
-            ldx #RAIL_HEIGHT
-rail_B_loop  
+            sta RESP0             ;3  67
+            sta RESP1             ;3  70
+    ; SC 217
             sta WSYNC
-            dex
-            bne rail_B_loop
+            lda #BLACK            ;2   2
+            sta COLUBK            ;3   5
+            lda #WHITE            ;2   7
+            sta COLUP0            ;3  10
+            sta COLUP1            ;3  13
 
-;
-    ; SC 180
-            lda #BLACK
-            sta COLUBK
-            ldx #LOGO_HEIGHT
+    ; SC 218 - 224
+
+            ldx #LOGO_HEIGHT - 1
 logo_loop 
             sta WSYNC
+            lda DC21_0,x
+            sta GRP0
+            lda DC21_1,x
+            sta GRP1
             dex
-            bne logo_loop
+            bpl logo_loop
 
-    ; SC 192
+    ; SC 225 - 255
     ; 30 lines of overscan to follow            
 
             ldx #30
@@ -731,6 +736,7 @@ doOverscan  sta WSYNC               ; wait a scanline
             bit SWCHB
             bne gameCheck
             jmp Reset
+
 gameCheck
             lda player_score
             cmp #WINNING_SCORE
@@ -744,6 +750,8 @@ gameEnd
             lda #$0f
             sta game_dark
 gameContinue
+
+frameEnd
             jmp newFrame
 
 ;-----------------------------------------------------------------------------------
@@ -963,11 +971,10 @@ rider_B_start_0
             lda player_charge       ;3  13
             sta COLUPF              ;3  16
             pla                     ;4  20
-            SLEEP 2                 ;2  22 ; timing shim
+            iny                     ;2  22 y is ff + timing shim + readying COLUPF for after jump
             sta RESP1               ;3  25  
             sta NUSIZ0              ;3  28
             sta HMP0                ;3  31 
-            ldy #$0                 ;2  33
             jmp rider_B_resp_end_0  ;3  36
 
 rider_B_start_l
@@ -987,15 +994,15 @@ rider_B_start_l
             sta HMP0                ;3  39
             lda tmp                 ;3  42
             sbc #$06                ;2  44 ; borrow set due to plp
-            bmi rider_B_resp_m      ;2  46
+            bmi rider_B_resp_m      ;2  46 ; BUGBUG COLUPF glitch
             tay                     ;2  48
 rider_B_resp_l; strobe resp
             dey                     ;2  50
             bpl rider_B_resp_l      ;2  57 (52 + 1 * 5)
 rider_B_resp_m
-            lda #$0                 ;2  59 49 from branch
-            sta COLUPF              ;3  62
-            sta RESP1               ;3  65
+            iny                     ;2  59 49 from branch (note y is ff)
+            sty COLUPF              ;3  62
+            sty RESP1               ;3  65
             jmp rider_B_hmov        ;2  68
 rider_B_to_A_resp_m
             lda tmp                 ;3  40
@@ -1003,14 +1010,14 @@ rider_B_to_A_resp_m
             tay                     ;2  44
             bmi rider_B_to_A_resp_n ;2  46
 rider_B_to_A_resp_l; strobe resp
-            dey                     ;2  48 ; note borrow?
+            dey                     ;2  48 
             bpl rider_B_to_A_resp_l ;2  55 (50 + 1 * 5)
             SLEEP 2                 ;2  57 timing shim
 rider_B_to_A_resp_n
-            lda #$0                 ;2  59 49 from branch
-            sta COLUPF              ;3  62 
-            sta RESP1               ;3  65
-            sta ENABL               ;3  68
+            iny                     ;2  59 49 from branch (note y is ff)
+            sty COLUPF              ;3  62 
+            sty RESP1               ;3  65
+            sty ENABL               ;3  68
             jmp rider_A_hmov        ;3  71 
 
 rider_B_to_A_hmov
@@ -1046,7 +1053,7 @@ rider_B_resp; strobe resp
             bpl rider_B_resp        ;2  47  27 + 4 * 5
             sta RESP1               ;3  49
             sta HMP0                ;3  52
-            ldy #$0                 ;2  55
+            iny                     ;2  55 y is ff, save instr
 rider_B_resp_end_0
             lda rider_hpos,x        ;4  59
             sta HMP1                ;3  62
@@ -1080,9 +1087,9 @@ rider_B_hmov_rock_end
             sta tmp_addr_1          ;3  50
             lda #$00                ;2  52
             sta HMP1                ;3  55 / 59
-            ldy #RIDER_HEIGHT - 1   ;2  57
-            sta CXCLR               ;3  60 prep for collision
-            sta COLUPF              ;3  63
+            sta CXCLR               ;3  58 prep for collision
+            sta COLUPF              ;3  61
+            ldy #RIDER_HEIGHT - 1   ;2  63
             plp                     ;4  67  exit
             beq rider_B_to_A_loop   ;2  69 / 73 (from a)
 
@@ -1140,11 +1147,11 @@ rider_B_to_A_loop
             sta HMOVE               ;3   3 ; process hmoves
             jmp rider_A_loop_body   ;3   6
 
-rider_B_to_A_loop_a; running out of cycles in this transition
-            lda #$0                ;3  63
-            sta COLUPF             ;3  66
-            sta ENABL              ;3  69
-            dey                    ;2  71 ; copy rider_A_loop_a
+rider_B_to_A_loop_a; BUGBUG running out of cycles in this transition .. or not?
+            lda #$0                ;3  56
+            sta COLUPF             ;3  59
+            sta ENABL              ;3  62
+            dey                    ;2  64 ; copy rider_A_loop_a
             sta WSYNC              ;3  0  ; copy rider_A_end
             sta HMOVE              ;3  3
             bpl rider_B_to_A_loop_a_jmp ;2  5 
@@ -1241,7 +1248,10 @@ HORIZON_COLOR ; 14 bytes
         byte CLOUD_ORANGE - 2, CLOUD_ORANGE, CLOUD_ORANGE + 2, CLOUD_ORANGE + 4, SKY_YELLOW, SKY_YELLOW + 2, SKY_YELLOW + 4, SKY_YELLOW + 2, SKY_YELLOW, WHITE_WATER, SKY_BLUE + 8, SKY_BLUE + 4, SKY_BLUE + 2, SKY_BLUE 
 HORIZON_COUNT ; 14 bytes
         byte $0, $2, $4, $6, $7, $8, $b, $13, $16, $17, $18, $0, $2, $4 
-   
+DC21_0 ; 6 bytes
+	    byte	$0,$c6,$a8,$a8,$a8,$c6; 6
+DC21_1 ; 6 bytes
+        byte	$0,$e8,$88,$e8,$28,$e8; 6
 ;-----------------------------------------------------------------------------------
 ; the CPU reset vectors
 
