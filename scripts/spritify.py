@@ -186,7 +186,9 @@ def emit_spriteMulti(varname, image, fp, bits=24):
         image = image.convert(mode='RGBA')
     data = image.getdata()
     cols = int(bits / 8)
-    vars = [[]] * cols
+    vars = []
+    for i in range(0, cols):
+        vars.append([])
     for i, word in enumerate([bits2int(chunk) for chunk in chunker(map(bit, data), 8)]):
         vars[i % cols].append(word)
     fp.write(f'{varname}\n'.upper())
@@ -198,7 +200,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Generate 6502 assembly for sprite graphics')
     parser.add_argument('--reverse', type=bool, default=False)
-    parser.add_argument('--bits', type=int, choices=[8, 24, 48], default=8)
+    parser.add_argument('--bits', type=int, choices=[8, 16, 24, 48], default=8)
     parser.add_argument('filenames', nargs='*')
 
     args = parser.parse_args()
