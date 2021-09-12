@@ -773,7 +773,7 @@ logo_loop
     ; SC 225 - 255
     ; 30 lines of overscan to follow            
 
-            ldx #30
+            ldx #30 + 5 
 doOverscan  sta WSYNC               ; wait a scanline
             dex
             bne doOverscan
@@ -1271,10 +1271,12 @@ HORIZON_COLOR ; 14 bytes
         byte CLOUD_ORANGE - 2, CLOUD_ORANGE, CLOUD_ORANGE + 2, CLOUD_ORANGE + 4, SKY_YELLOW, SKY_YELLOW + 2, SKY_YELLOW + 4, SKY_YELLOW + 2, SKY_YELLOW, WHITE_WATER, SKY_BLUE + 8, SKY_BLUE + 4, SKY_BLUE + 2, SKY_BLUE 
 HORIZON_COUNT ; 14 bytes
         byte $0, $2, $4, $6, $7, $8, $b, $13, $16, $17, $18, $0, $2, $4 
+
 DC21_0 ; 6 bytes
 	    byte	$0,$c6,$a8,$a8,$a8,$c6; 6
 DC21_1 ; 6 bytes
         byte	$0,$e8,$88,$e8,$28,$e8; 6
+        
 ;-----------------------------------------------------------------------------------
 ; the CPU reset vectors
 
