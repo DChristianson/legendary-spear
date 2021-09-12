@@ -58,6 +58,11 @@ RIDER_ROCK_TYPE = $00
 RAIL_HEIGHT = 6
 LOGO_HEIGHT = 6
 WINNING_SCORE = $99
+RIDER_HIT_SOUND = $0a
+PLAYER_HIT_SOUND = $02
+GALLOP_SOUND = $00
+GALLOP_PATTERN = $d8
+
 ; ----------------------------------
 ; variables
 
@@ -67,6 +72,7 @@ WINNING_SCORE = $99
 
 game_state      ds 1
 game_dark       ds 1
+sound_track     ds 1
 rider_animate   ds 1
 rider_ctrl      ds 2
 rider_timer     ds 5
@@ -134,6 +140,8 @@ init_rider_loop
             stx rider_pattern
             ldx #$0f
             stx game_dark
+            lda #GALLOP_SOUND
+            sta AUDC0
 
 newFrame
 
@@ -166,11 +174,12 @@ newFrame
 ;---------------------
 ; scoring kernel
 ; SL 0-9
+            lda #0
+            sta tmp              ; total damage
             ldx #NUM_RIDERS - 1 
             dec player_damaged
             bpl scoringLoop
-            lda #0
-            sta player_damaged
+            sta player_damaged   ; note is 0
 scoringLoop
             sta WSYNC                  ;3   0
             lda rider_colors,x         ;4   4
@@ -201,19 +210,22 @@ scoringLoop_save_score
             cld                        ;2  56
             lda #$08                   ;2  58
             sta rider_damaged,x        ;4  62
-            jmp scoringLoop_wsync_end  ;3  65
+            lda #RIDER_HIT_SOUND       ;2  64
+            sta AUDC1                  ;3  67
+            jmp scoringLoop_end  ;3  70
 scoringLoop_player_hit
-            tay                        ;2  44
-scoringLoop_player_hit_shift
-            asl player_health          ;5  49 ; bugbug can glitch lines
-            dey                        ;2  51 ; maybe acc damage in tmp, assess later
-            bne scoringLoop_player_hit_shift ;2  88 (53 + 4 * 70
-            lda #$08                   ;3  91
-            sta player_damaged         ;3  94
-            sty player_charge          ;3  97 note y is 0 now
-            sta rider_damaged,x        ;4  62
-            jmp scoringLoop_end        ;3  65
+            clc                        ;2  44
+            adc tmp                    ;3  47
+            sta tmp                    ;3  50
+            lda #$08                   ;3  53
+            sta player_damaged         ;3  56
+            sta rider_damaged,x        ;4  60
+            ldy #$0                    ;2  62
+            sty player_charge          ;3  65
+            jmp scoringLoop_wsync_end  ;3  68
 scoringLoop_decay
+            sta AUDF1
+            sta AUDV1
             dec rider_damaged,x
             bmi scoringLoop_rider_clear
             rol rider_colors,x
@@ -222,10 +234,45 @@ scoringLoop_rider_clear
             lda #RIDER_GREEN_TYPE
             sta rider_colors,x
 scoringLoop_wsync_end
-            sta WSYNC
+            sta WSYNC ; only needed to shim logic that takes > 1 line
 scoringLoop_end
             dex
             bpl scoringLoop
+
+damageLoop_assess
+            sta WSYNC 
+            ldy tmp
+            beq damageLoop_skip
+            lda #PLAYER_HIT_SOUND      ;2  --
+            sta AUDC1                  ;3  --
+            lda player_health
+damageLoop_incur
+            asl
+            dey 
+            beq damageLoop_incur
+            sta player_health
+damageLoop_skip
+
+soundTrack_start
+            lda game_state
+            beq soundTrack_end
+            lda player_animate
+            bne soundTrack_end
+            clc 
+            ror sound_track
+            bcc soundTrack_clear
+            lda #$03
+            jmp soundTrack_update
+soundTrack_clear
+            bne soundTrack_lo
+            lda #GALLOP_PATTERN
+            sta sound_track
+soundTrack_lo
+            lda #$00
+soundTrack_update
+            sta AUDV0
+soundTrack_end
+
 
 ;-----------------------------
 ; animate player
@@ -302,19 +349,19 @@ animatePlayer_fire_end
 
 ; SL 22
             sta WSYNC                ;3   0
-            lda game_state           ;3   3    
+            lda #$80                 ;3   8
+            ldx game_state           ;3   3    
             bne movePlayer           ;2   5
 movePlayer_game
 ; SL 23
             sta WSYNC
-            lda #$80                 ;3   8
             bit INPT4                ;3  11
-            bne movePlayer_game_check;2  13
-            lda #1
-            sta player_charge        ;5  18
+            bne movePlayer_game_start_check ;2  13
+            inx                      ;2  15 save instr, x is 0
+            stx player_charge        ;5  20
             jmp movePlayer_end
-movePlayer_game_check
-            lda player_charge
+movePlayer_game_start_check
+            ldx player_charge
             beq movePlayer_end
             lda player_score
             ora player_health
@@ -326,30 +373,28 @@ movePlayer_game_check
             jmp movePlayer_end
 
 movePlayer
-            lda player_damaged       ;3   3
+            ldx player_damaged       ;3   3
             bne movePlayer_dir       ;2   5
-            lda #$80                 ;3   8
             bit INPT4                ;3  11
             bne movePlayer_button_up ;2  13
             inc player_charge        ;5  18
             jmp movePlayer_dir       ;3  21
 movePlayer_button_up
-            lda player_charge             ;3  24
+            ldx player_charge             ;3  24
             beq movePlayer_button_up_done ;2  26
-            lda #PLAYER_STRIKE_COUNT      ;2  28
-            sta player_fire               ;3  31
+            ldx #PLAYER_STRIKE_COUNT      ;2  28
+            stx player_fire               ;3  31
 movePlayer_button_up_done
-            lda #0               ;2  33
-            sta player_charge    ;3  36
+            ldx #0               ;2  33
+            stx player_charge    ;3  36
 
 movePlayer_dir
 ; SL 23
             sta WSYNC            ;3   0
-            lda player_fire
+            ldx player_fire
             bne movePlayer_fire
-            lda #$00
-            sta player_hmov_x
-            lda #$80             ;3  34 kludge reloading
+            ldx #$00
+            stx player_hmov_x
             bit SWCHA            ;3   3
             beq movePlayer_right ;2   5
             lsr                  ;2   7
@@ -364,7 +409,7 @@ movePlayer_dir
             jmp movePlayer_end   ;3  30
 
 movePlayer_fire
-            lda #$80             ;2
+            ;lda #$80            ;2 - optimization, a is already #$80 for bit tests, same value needed for hmov_x
             sta player_hmov_x    ;3
 movePlayer_right
             lda #$F0             ;2   8
@@ -630,13 +675,14 @@ rail_A_loop
             sta WSYNC                ;3   0
             dex                      ;2   2
             bpl rail_A_loop          ;2   4
-            lda #0                   ;2  33 BUGBUG save inst
-            sta GRP0                 ;3  36
-            sta GRP1                 ;3  39
-            sta REFP0                ;3  42
-            sta NUSIZ0               ;3  45
-            sta NUSIZ1               ;3  48
-            sta HMCLR                ;3  51
+            inx                      ;2  33 save inst
+            stx GRP0                 ;3  36
+            stx GRP1                 ;3  39
+            stx REFP0                ;3  42
+            stx NUSIZ0               ;3  45
+            stx NUSIZ1               ;3  48
+            stx HMCLR                ;3  51
+            stx COLUP0               ;3  54
 
 ; ----------------------------------
 ; playfield kernel 
@@ -646,34 +692,33 @@ rail_A_loop
     ; SC 79           
             sta WSYNC                ;3   0
             ;ldx #PLAYER_COLOR       ;2   2 save instr (replace with inx)
-            inx                      ;2   2 x was ff
-            lda player_vpos          ;3   3 
-            ldy #3                   ;2   7
+            ;inx                     ;2   2 x is 00
+            ldy #4                   ;2   2
 player_resp_loop
-            dey                      ;2   9
-            bpl player_resp_loop     ;2  11 + 15 = 26
+            dey                      ;2   4
+            bpl player_resp_loop     ;2   7 + 20 = 27
             sta RESBL                ;3  29
             sta RESP0                ;3  32
-            stx COLUP0               ;3  39
-            sta player_vdelay        ;3  41
-            lda player_hmov          ;3  44
-            sta HMP0                 ;3  48
-            sta HMBL                 ;3  38
+            lda player_vpos          ;3  35
+            sta player_vdelay        ;3  38
+            lda player_hmov          ;3  41
+            sta HMP0                 ;3  44
+            sta HMBL                 ;3  47
 
     ; SC 80
             sta WSYNC                ;3   0
             sta HMOVE                ;3   3
             lda #$30                 ;2   5
             sta PF0                  ;3   8
-            ;ldx #$00                 ;2  10 save instr (x is 0)
-            stx PF1                  ;3  13
-            stx PF2                  ;3  16
-            ;ldx #BLACK               ;2  18 save inst (x is 0)
-            stx COLUBK               ;3  21
-            lda player_hmov_x        ;3  24
-            sta HMP0                 ;3  27
-            lda #$d0                 ;3  30
-            sta HMBL                 ;3  33
+            ;ldx #$00                ;2  -- save instr (x is 0)
+            stx PF1                  ;3  11
+            stx PF2                  ;3  14
+            ;ldx #BLACK              ;2  -- save inst (x is 0)
+            stx COLUBK               ;3  17
+            lda player_hmov_x        ;3  20
+            ldx #$d0                 ;2  22 ; adjust for resbl, trying to stay out of hmov window
+            sta HMP0                 ;3  25
+            stx HMBL                 ;3  28
 
 ;--------------------
 ; transition to riders kernel
@@ -822,10 +867,10 @@ rider_A_start_l
             beq rider_A_to_B_start_l ;2  12
 rider_A_resp_l; strobe resp
             dey                      ;2  14
-            bpl rider_A_resp_l       ;2+ 56 (16 + 8 * 5)
-            lda tmp                  ;3  59
-            sta HMP1                 ;3  62
-            sta RESP1                ;3  65 
+            bpl rider_A_resp_l       ;2+ 16 (16 + 8 * 5)
+            lda tmp                  ;3  19
+            sta HMP1                 ;3  22
+            sta RESP1                ;3  25 
             jmp rider_A_hmov         ;3  68 
 
 rider_A_to_B_start_l
@@ -907,7 +952,7 @@ rider_A_loop;
             sta WSYNC               ;3   0
             sta HMOVE               ;3   3 ; process hmoves
 rider_A_loop_body:
-            lda (tmp_addr_1),y  ;5   8 ; p1 draw
+            lda (tmp_addr_1),y      ;5   8 ; p1 draw
             sta GRP1                ;3  11
             lda (tmp_addr_0),y      ;5  16
             sta NUSIZ1              ;3  19
@@ -989,39 +1034,23 @@ rider_B_start_l
             sta NUSIZ0              ;3  23
             ldy rider_hpos,x        ;4  27
             sty HMP1                ;3  30
-            plp                     ;4  34
-            beq rider_B_to_A_resp_m ;2  36
-            sta HMP0                ;3  39
-            lda tmp                 ;3  42
-            sbc #$06                ;2  44 ; borrow set due to plp
-            bmi rider_B_resp_m      ;2  46 ; BUGBUG COLUPF glitch
-            tay                     ;2  48
+            sta HMP0                ;3  33
+            lda tmp                 ;3  36
+            sec                     ;2  38
+            sbc #$05                ;2  40 ; 
+            tay                     ;2  42
 rider_B_resp_l; strobe resp
-            dey                     ;2  50
-            bpl rider_B_resp_l      ;2  57 (52 + 1 * 5)
+            dey                     ;2  44
+            bpl rider_B_resp_l      ;2  56 (46 + 2 * 5)
 rider_B_resp_m
-            iny                     ;2  59 49 from branch (note y is ff)
-            sty COLUPF              ;3  62
+            iny                     ;2  58
+            plp                     ;4  62
             sty RESP1               ;3  65
-            jmp rider_B_hmov        ;2  68
-rider_B_to_A_resp_m
-            lda tmp                 ;3  40
-            sbc #$06                ;2  42 ; borrow set due to plp
-            tay                     ;2  44
-            bmi rider_B_to_A_resp_n ;2  46
-rider_B_to_A_resp_l; strobe resp
-            dey                     ;2  48 
-            bpl rider_B_to_A_resp_l ;2  55 (50 + 1 * 5)
-            SLEEP 2                 ;2  57 timing shim
-rider_B_to_A_resp_n
-            iny                     ;2  59 49 from branch (note y is ff)
-            sty COLUPF              ;3  62 
-            sty RESP1               ;3  65
-            sty ENABL               ;3  68
-            jmp rider_A_hmov        ;3  71 
+            sty COLUPF              ;3  68 
+            beq rider_B_to_A_hmov   ;2  70
+            jmp rider_B_hmov        ;3  73
 
 rider_B_to_A_hmov
-            sty COLUPF              ;3  72 ;
             sta WSYNC               ;3   0 ;
             sta HMOVE               ;3   3 ; transition from B_to_A
             sty ENABL               ;3   9 ; interleave with rider_A_hmov
@@ -1053,13 +1082,13 @@ rider_B_resp; strobe resp
             bpl rider_B_resp        ;2  47  27 + 4 * 5
             sta RESP1               ;3  49
             sta HMP0                ;3  52
-            iny                     ;2  55 y is ff, save instr
+            iny                     ;2  55 y is 0, save instr
 rider_B_resp_end_0
-            lda rider_hpos,x        ;4  59
-            sta HMP1                ;3  62
-            plp                     ;4  66
-            beq rider_B_to_A_hmov   ;2  68
-            sty COLUPF              ;3  71
+            sty COLUPF              ;3  57
+            lda rider_hpos,x        ;4  61
+            sta HMP1                ;3  64
+            plp                     ;4  68
+            beq rider_B_to_A_hmov   ;2  70
 
 rider_B_hmov; locating rider horizontally
             sta WSYNC               ;3   0 
@@ -1108,10 +1137,10 @@ rider_B_loop
             lda (tmp_addr_0),y      ;5  39
             sta NUSIZ1              ;3  42
             sta HMP1                ;3  45
-            plp                     ;5  50 
-            beq rider_B_to_A_loop_a ;2  52
-            lda #$0                 ;3  55
-            sta COLUPF              ;3  58
+            lda #$0                 ;2  47
+            sta COLUPF              ;3  50
+            plp                     ;4  54 
+            beq rider_B_to_A_loop_a ;2  56
 rider_B_loop_a
             dey                     ;5  63
             bpl rider_B_loop        ;2  65
@@ -1148,16 +1177,10 @@ rider_B_to_A_loop
             jmp rider_A_loop_body   ;3   6
 
 rider_B_to_A_loop_a; BUGBUG running out of cycles in this transition .. or not?
-            lda #$0                ;3  56
-            sta COLUPF             ;3  59
-            sta ENABL              ;3  62
-            dey                    ;2  64 ; copy rider_A_loop_a
-            sta WSYNC              ;3  0  ; copy rider_A_end
-            sta HMOVE              ;3  3
-            bpl rider_B_to_A_loop_a_jmp ;2  5 
-            jmp rider_A_end_a      ;3  8
-rider_B_to_A_loop_a_jmp
-            jmp rider_A_loop_body  ;3  9
+            dey                       ;2  62 ; copy rider_A_loop_a
+            bpl rider_B_to_A_loop     ;2  64 
+            sta ENABL                 ;3  67
+            jmp rider_A_end           ;3  70
 
 rider_B_to_A_end_a
             lda #$0                ;2  37
