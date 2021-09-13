@@ -153,27 +153,29 @@ newFrame
 
     ; 3 scanlines of vertical sync signal to follow
 
-            lda #%00000010
-            sta VSYNC               ; turn ON VSYNC bit 1
+            ldx #%00000010
+            stx VSYNC               ; turn ON VSYNC bit 1
 
             sta WSYNC               ; wait a scanline
             sta WSYNC               ; another
             sta WSYNC               ; another = 3 lines total
 
-            lda #0
             sta VSYNC               ; turn OFF VSYNC bit 1
 
     ; 37 scanlines of vertical blank to follow
 
 ;--------------------
 ; VBlank start
-; SL 0
+
             lda #1
             sta VBLANK
 
+            lda #42    ; vblank timer will land us ~ on scanline 34
+            sta TIM64T
+
 ;---------------------
 ; scoring kernel
-; SL 0-9
+
             lda #0
             sta tmp              ; total damage
             ldx #NUM_RIDERS - 1 
@@ -181,7 +183,6 @@ newFrame
             bpl scoringLoop
             sta player_damaged   ; note is 0
 scoringLoop
-            sta WSYNC                  ;3   0
             lda rider_colors,x         ;4   4
             cmp #RIDER_GREEN_TYPE      ;2   6
             beq scoringLoop_wsync_end  ;2   8
@@ -240,7 +241,6 @@ scoringLoop_end
             bpl scoringLoop
 
 damageLoop_assess
-            sta WSYNC 
             ldy tmp
             beq damageLoop_skip
             lda #PLAYER_HIT_SOUND      ;2  --
@@ -249,7 +249,7 @@ damageLoop_assess
 damageLoop_incur
             asl
             dey 
-            beq damageLoop_incur
+            bne damageLoop_incur
             sta player_health
 damageLoop_skip
 
@@ -261,24 +261,23 @@ soundTrack_start
             clc 
             ror sound_track
             bcc soundTrack_clear
-            lda #$03
+            ldy #$02
             jmp soundTrack_update
 soundTrack_clear
             bne soundTrack_lo
             lda #GALLOP_PATTERN
             sta sound_track
 soundTrack_lo
-            lda #$00
+            ;ldy #$00  - optimization y is 0
 soundTrack_update
-            sta AUDV0
+            sty AUDV0 ; y is volume
 soundTrack_end
 
 
 ;-----------------------------
 ; animate player
-; SL 10-12 (-26 till picture)
+
 animatePlayer
-            sta WSYNC
             ldy player_tile
             lda game_state           
             beq animatePlayer_end           
@@ -320,7 +319,6 @@ stackPlayer_load_addr
             sta tmp_addr_0+1
             sta tmp_addr_1+1
 
-; SL 13-21 
 ; we're going to copy the current graphics to the stack
             ldy #$0    
 stackPlayer_loop
@@ -343,18 +341,14 @@ animatePlayer_eval_fire
             sta player_fire
             jmp animatePlayer_fire_end
 animatePlayer_fire_active
-            lda #$ff 
+            lda #$ff ; edit player graphic
             sta $dc
 animatePlayer_fire_end
 
-; SL 22
-            sta WSYNC                ;3   0
             lda #$80                 ;3   8
             ldx game_state           ;3   3    
             bne movePlayer           ;2   5
 movePlayer_game
-; SL 23
-            sta WSYNC
             bit INPT4                ;3  11
             bne movePlayer_game_start_check ;2  13
             inx                      ;2  15 save instr, x is 0
@@ -381,32 +375,28 @@ movePlayer
             jmp movePlayer_dir       ;3  21
 movePlayer_button_up
             ldx player_charge             ;3  24
-            beq movePlayer_button_up_done ;2  26
+            beq movePlayer_dir            ;2  26
             ldx #PLAYER_STRIKE_COUNT      ;2  28
             stx player_fire               ;3  31
-movePlayer_button_up_done
-            ldx #0               ;2  33
+            ldx #$00             ;2  33
             stx player_charge    ;3  36
 
 movePlayer_dir
-; SL 23
-            sta WSYNC            ;3   0
-            ldx player_fire
-            bne movePlayer_fire
-            ldx #$00
-            stx player_hmov_x
-            bit SWCHA            ;3   3
-            beq movePlayer_right ;2   5
-            lsr                  ;2   7
-            bit SWCHA            ;3  10
-            beq movePlayer_left  ;2  12
-            lsr                  ;2  14
-            bit SWCHA            ;3  17
-            beq movePlayer_down  ;2  19
-            lsr                  ;3  22
-            bit SWCHA            ;3  25
-            beq movePlayer_up    ;2  27
-            jmp movePlayer_end   ;3  30
+            ldx player_fire      ;3   3
+            bne movePlayer_fire  ;2   5
+            stx player_hmov_x    ;3   8 ; take advantage of x is zero
+            bit SWCHA            ;3  11
+            beq movePlayer_right ;2  13
+            lsr                  ;2  15
+            bit SWCHA            ;3  18
+            beq movePlayer_left  ;2  20
+            lsr                  ;2  22
+            bit SWCHA            ;3  23
+            beq movePlayer_down  ;2  25
+            lsr                  ;3  28
+            bit SWCHA            ;3  31
+            beq movePlayer_up    ;2  33
+            jmp movePlayer_end   ;3  36
 
 movePlayer_fire
             ;lda #$80            ;2 - optimization, a is already #$80 for bit tests, same value needed for hmov_x
@@ -434,8 +424,6 @@ movePlayer_up
             
 movePlayer_end
 
-; SL 24
-            sta WSYNC 
 animateRider
             dec rider_animate
             bpl animateRider_end
@@ -455,9 +443,7 @@ animateRider_end
 
             ldx #NUM_RIDERS - 1
 
-; SL 25-34           
 moveRider_loop
-            sta WSYNC
             lda game_state            ;3   3    
             beq moveRider_noreset     ;2   5
             dec rider_timer,x         ;6  11
@@ -504,10 +490,14 @@ moveRider_setSpeed
             sta rider_speed,x
             jmp moveRider_end
 moveRider_noreset
-            sta WSYNC              ;3    0
 moveRider_end
             dex                    ;2   90
             bpl moveRider_loop     ;2   92
+
+            ldx #$00
+waitOnVBlank            
+            cpx TIM64T
+            bmi waitOnVBlank
 
 ; -----------------------------------
 ; Display kernels
@@ -537,8 +527,9 @@ horizonScore_resp
             lda #WHITE             ;2   5
             sta COLUP0             ;3   8
             sta COLUP1             ;3  11
-            lda #0                 ;2  13 ; end of VBLANK
-            sta VBLANK             ;3  16
+            ;ldx #0                 ;2  13 ; end of VBLANK
+            inx                    ;2  13 ; end of VBLANK ; optimize code size - x is ff
+            stx VBLANK             ;3  16
 
             ldx #13                ;2  18  
 ; SL 37 (Display 0)
@@ -598,22 +589,22 @@ horizonScore_End
             sec                      ;2   6
             sbc game_dark            ;3   9
             sta COLUBK               ;3  12
-            lda #0                   ;2  14
-            sta GRP0                 ;3  17
-            sta GRP1                 ;3  20
+            iny                      ;2  14 ; code opt, y is ff
+            sty GRP0                 ;3  17
+            sty GRP1                 ;3  20
             ldy #$03                 ;2  22
 horizonSun_resp
             dey                      ;2  24
             bpl horizonSun_resp      ;2  41 (26 + 15)
             sta RESP0                ;3  44
             sta RESP1                ;3  47
-            sta NUSIZ1               ;3  50
-            lda #$10                 ;2  52
-            sta HMP0                 ;3  55
-            lda #$20                 ;2  57
-            sta HMP1                 ;3  60
-            lda #1                   ;2  62  BUGBUG save inst?            
-            sta NUSIZ0               ;3  65
+            ;sta NUSIZ1               ;3  50 ; code opt, should be 0 already
+            lda #$10                 ;2  49
+            sta HMP0                 ;3  52
+            lda #$20                 ;2  54
+            sta HMP1                 ;3  57
+            lda #1                   ;2  59             
+            sta NUSIZ0               ;3  62
 
 ; SL 47
             sta WSYNC                ;3   0
@@ -748,15 +739,27 @@ riders_end
 ;--------------------
 ; bottom rail kernel
 ;
-            sta RESP0             ;3  67
-            sta RESP1             ;3  70
+
+            ldx #RAIL_HEIGHT - 1
+rail_B_loop
+            dex
+            sta WSYNC
+            bpl rail_B_loop
+
     ; SC 217
             sta WSYNC
-            lda #BLACK            ;2   2
-            sta COLUBK            ;3   5
+            ;lda #BLACK            ;2   2 ; code size opt 
+            inx                   ;2   2  ; x is ff
+            stx COLUBK            ;3   5
             lda #WHITE            ;2   7
             sta COLUP0            ;3  10
             sta COLUP1            ;3  13
+            ldx #$09              ;2  15 
+logo_resp_loop
+            dex                   ;2  17
+            bpl logo_resp_loop    ;2  64 (19 + 9 * 5)
+            sta RESP0             ;3  67
+            sta RESP1             ;3  70
 
     ; SC 218 - 224
 
@@ -773,7 +776,7 @@ logo_loop
     ; SC 225 - 255
     ; 30 lines of overscan to follow            
 
-            ldx #30 + 5 
+            ldx #30
 doOverscan  sta WSYNC               ; wait a scanline
             dex
             bne doOverscan
