@@ -13,7 +13,9 @@ $(ROMDIR):
 	touch $@
 
 $(ROMS): $(SRC)
-	dasm $(SRC) -Iinclude -f3 -v4 -o$@ -s$(@:.bin=.sym) -l$(@:.bin=.lst) -MSYSTEM=$(word 2,$(subst ., ,$(subst _, ,$@))) > $(@:.bin=.log)
+	$(eval SYSTEM := $(word 2,$(subst ., ,$(subst _, ,$@))))
+	dasm $(SRC) -Iinclude -f3 -v4 -o$@ -s$(@:.bin=.sym) -l$(@:.bin=.lst) -MSYSTEM=$(SYSTEM) > $(@:.bin=.log)
+	cat $(SYSTEM).script > $(@:.bin=.script)
 
 .PHONY: clean
 clean:
