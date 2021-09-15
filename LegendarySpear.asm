@@ -367,21 +367,21 @@ movePlayer_game_start_check
             jmp movePlayer_end
 
 movePlayer
-            ldx player_damaged       ;3   3
-            bne movePlayer_dir       ;2   5
-            bit INPT4                ;3  11
-            bne movePlayer_button_up ;2  13
-            inc player_charge        ;5  18
-            jmp movePlayer_dir       ;3  21
+            ldx player_damaged            ;3   3
+            bne movePlayer_horiz_start    ;2   5
+            bit INPT4                     ;3  11
+            bne movePlayer_button_up      ;2  13
+            inc player_charge             ;5  18
+            jmp movePlayer_horiz_start    ;3  21
 movePlayer_button_up
             ldx player_charge             ;3  24
-            beq movePlayer_dir            ;2  26
+            beq movePlayer_horiz_start    ;2  26
             ldx #PLAYER_STRIKE_COUNT      ;2  28
             stx player_fire               ;3  31
-            ldx #$00             ;2  33
-            stx player_charge    ;3  36
+            ldx #$00                      ;2  33
+            stx player_charge             ;3  36
 
-movePlayer_dir
+movePlayer_horiz_start
             ldx player_fire      ;3   3
             bne movePlayer_fire  ;2   5
             stx player_hmov_x    ;3   8 ; take advantage of x is zero
@@ -390,28 +390,29 @@ movePlayer_dir
             lsr                  ;2  15
             bit SWCHA            ;3  18
             beq movePlayer_left  ;2  20
-            lsr                  ;2  22
-            bit SWCHA            ;3  23
-            beq movePlayer_down  ;2  25
-            lsr                  ;3  28
-            bit SWCHA            ;3  31
-            beq movePlayer_up    ;2  33
-            jmp movePlayer_end   ;3  36
-
+            jmp movePlayer_vert_start  ;3  36
 movePlayer_fire
             ;lda #$80            ;2 - optimization, a is already #$80 for bit tests, same value needed for hmov_x
             sta player_hmov_x    ;3
 movePlayer_right
             lda #$F0             ;2   8
-            jmp movePlayer_horiz ;3  11
+            jmp movePlayer_horiz_save ;3  11
 movePlayer_left
             lda #$10             ;2  15
-movePlayer_horiz
-            clc                  ;2  17
-            adc player_hmov      ;3  20
-            bvs movePlayer_end   ;2  22
-            sta player_hmov      ;3  25
-            jmp movePlayer_end   ;3  28
+movePlayer_horiz_save
+            clc                        ;2  17
+            adc player_hmov            ;3  20
+            bvs movePlayer_vert_start  ;2  22
+            sta player_hmov            ;3  25
+
+movePlayer_vert_start
+            lda #$20             ;2  -- replace A
+            bit SWCHA            ;3  23
+            beq movePlayer_down  ;2  25
+            lsr                  ;3  28
+            bit SWCHA            ;3  31
+            beq movePlayer_up    ;2  33
+            jmp movePlayer_end
 movePlayer_down
             inc player_vpos      ;5  42
             lda #110             ;2  44
@@ -420,8 +421,7 @@ movePlayer_down
             jmp movePlayer_end   ;3  52
 movePlayer_up
             dec player_vpos      ;5  33
-            beq movePlayer_down  ;3  36
-            
+            beq movePlayer_down  ;3  36      
 movePlayer_end
 
 animateRider
