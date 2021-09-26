@@ -86,14 +86,14 @@ player_animate  ds 1
 player_tile     ds 1
 player_vdelay   ds 1
 player_vpos     ds 1
-player_hmov     ds 1
-player_hmov_x   ds 1
+player_hpos     ds 1
 player_charge   ds 1
 player_fire     ds 1
 player_damaged  ds 1
 player_health   ds 1
 player_score    ds 1
-tmp                  ; overlapping ram
+tmp_prev_ctrl           ; tmp vars
+tmp           ds 1      ; overlapping ram
 tmp_addr_0    ds 2 ; used in scoring kernels
 tmp_addr_1    ds 2 ; used in scoring kernels
 
@@ -142,6 +142,8 @@ init_rider_loop
             stx game_dark
             lda #GALLOP_SOUND
             sta AUDC0
+            lda #$03
+            sta player_hpos
 
 newFrame
 
@@ -265,8 +267,8 @@ soundTrack_start
             jmp soundTrack_update
 soundTrack_clear
             bne soundTrack_lo
-            lda #GALLOP_PATTERN
-            sta sound_track
+            ;lda #GALLOP_PATTERN - optimization y is 0
+            sty sound_track ; save gallop pattern
 soundTrack_lo
             ;ldy #$00  - optimization y is 0
 soundTrack_update
@@ -283,8 +285,9 @@ animatePlayer
             beq animatePlayer_end           
             lda player_damaged
             beq animatePlayer_seq
-            ldy #$03 
+            ldy #$03                   ; load damaged player graphics
             jmp animatePlayer_save
+
 animatePlayer_seq
             dec player_animate
             bpl animatePlayer_end
@@ -302,9 +305,10 @@ animatePlayer_save
             sty player_tile
 animatePlayer_end
 
+
  ; now that we have the player tile, load it up
             clc
-            lda #<PLAYER_SPRITE_START
+            lda #<RIDER_SPRITE_START
             dey
             bmi stackPlayer_load_addr
 stackPlayer_tile_loop
@@ -315,21 +319,67 @@ stackPlayer_load_addr
             sta tmp_addr_0
             adc #24
             sta tmp_addr_1
-            lda #>PLAYER_SPRITE_START
+            lda #>RIDER_SPRITE_START
             sta tmp_addr_0+1
             sta tmp_addr_1+1
 
+stackPlayer_start
 ; we're going to copy the current graphics to the stack
-            ldy #$0    
+; this is modified to 
+            lda #$05
+            sta tmp_prev_ctrl 
+            ldy #$0  
 stackPlayer_loop
             cpy #RIDER_HEIGHT
             bpl stackPlayer_loop_end
             cpy #0
-            php
-            lda (tmp_addr_0),y  
+            php ;bugbug remove this
+                                 ; hack - 
+stackPlayer_push_ctrl
+            lda (tmp_addr_0),y
+            eor #$f0 ;invert hmp 
+            clc
+            adc #$10
+            tax 
+            and #$0f
+            cmp tmp_prev_ctrl
+            sta tmp_prev_ctrl
+            beq stackPlayer_push_inv_ctrl
+            bmi stackPlayer_step_down
+stackPlayer_step_up
+            txa
+            sec
+            sbc #$40
+            pha            
+            lda #$1f
             pha
-            lda (tmp_addr_1),y  
+            jmp stackPlayer_loop_dec 
+stackPlayer_step_down
+            cmp #$05
+            bmi stackPlayer_step_down_0
+            txa
+            clc
+            adc #$40
             pha
+            jmp stackPlayer_push_graphics
+stackPlayer_step_down_0
+            txa
+            sec
+            sbc #$80
+            pha            
+            jmp stackPlayer_push_graphics
+stackPlayer_push_inv_ctrl
+            txa
+            pha            
+            and #$02 ; hack for if this is a quad
+            beq stackPlayer_push_graphics
+            lda #$1f
+            jmp stackPlayer_push_graphics_0
+stackPlayer_push_graphics
+            lda (tmp_addr_1),y 
+stackPlayer_push_graphics_0
+            pha
+stackPlayer_loop_dec
             iny
             jmp stackPlayer_loop
 stackPlayer_loop_end
@@ -384,7 +434,7 @@ movePlayer_button_up
 movePlayer_horiz_start
             ldx player_fire      ;3   3
             bne movePlayer_fire  ;2   5
-            stx player_hmov_x    ;3   8 ; take advantage of x is zero
+            ;stx player_hmov_x    ;3   8 ; take advantage of x is zero
             bit SWCHA            ;3  11
             beq movePlayer_right ;2  13
             lsr                  ;2  15
@@ -392,18 +442,25 @@ movePlayer_horiz_start
             beq movePlayer_left  ;2  20
             jmp movePlayer_vert_start  ;3  36
 movePlayer_fire
-            ;lda #$80            ;2 - optimization, a is already #$80 for bit tests, same value needed for hmov_x
-            sta player_hmov_x    ;3
+            ; BUGBUG make charge happen
 movePlayer_right
             lda #$F0             ;2   8
+            clc                        ;2  17
+            adc player_hpos            ;3  20
+            bvc movePlayer_horiz_save  ;2  22
+            adc #$00                   ; carry set
             jmp movePlayer_horiz_save ;3  11
 movePlayer_left
             lda #$10             ;2  15
-movePlayer_horiz_save
             clc                        ;2  17
-            adc player_hmov            ;3  20
-            bvs movePlayer_vert_start  ;2  22
-            sta player_hmov            ;3  25
+            adc player_hpos            ;3  20
+            bvc movePlayer_horiz_save  ;2  22
+            adc #$0f 
+            cmp #$73
+            bne movePlayer_horiz_save
+            lda #$63
+movePlayer_horiz_save
+            sta player_hpos            ;3  25
 
 movePlayer_vert_start
             lda #$20             ;2  -- replace A
@@ -430,7 +487,7 @@ animateRider
             lda rider_ctrl
             cmp #<RIDER_SPRITE_2_CTRL
             bne animateRider_skipCtrl0
-            lda #<PLAYER_SPRITE_0_CTRL
+            lda #<RIDER_SPRITE_0_CTRL
             jmp animateRider_savCtrl0
 animateRider_skipCtrl0
             clc
@@ -494,7 +551,7 @@ moveRider_end
             dex                    ;2   90
             bpl moveRider_loop     ;2   92
 
-            ldx #$00
+            inx                    ; x is ff (save instruction)
 waitOnVBlank            
             cpx TIM64T
             bmi waitOnVBlank
@@ -669,11 +726,12 @@ rail_A_loop
             inx                      ;2  33 save inst
             stx GRP0                 ;3  36
             stx GRP1                 ;3  39
-            stx REFP0                ;3  42
             stx NUSIZ0               ;3  45
             stx NUSIZ1               ;3  48
             stx HMCLR                ;3  51
             stx COLUP0               ;3  54
+            lda #8                   ;2  56
+            sta REFP0                ;3  59 
 
 ; ----------------------------------
 ; playfield kernel 
@@ -684,32 +742,33 @@ rail_A_loop
             sta WSYNC                ;3   0
             ;ldx #PLAYER_COLOR       ;2   2 save instr (replace with inx)
             ;inx                     ;2   2 x is 00
-            ldy #4                   ;2   2
+            lda player_hpos          ;3   3
+            and #$0f                 ;2   5
+            tay                      ;2   7
 player_resp_loop
-            dey                      ;2   4
-            bpl player_resp_loop     ;2   7 + 20 = 27
-            sta RESBL                ;3  29
-            sta RESP0                ;3  32
-            lda player_vpos          ;3  35
-            sta player_vdelay        ;3  38
-            lda player_hmov          ;3  41
-            sta HMP0                 ;3  44
-            sta HMBL                 ;3  47
+            dey                      ;2   9
+            bpl player_resp_loop     ;2  11 + 25 = 36
+            sta RESBL                ;3  39
+            sta RESP0                ;3  42
+            lda player_hpos          ;3  45
+            sta HMP0                 ;3  48
+            sta HMBL                 ;3  51
 
     ; SC 80
             sta WSYNC                ;3   0
             sta HMOVE                ;3   3
-            lda #$30                 ;2   5
-            sta PF0                  ;3   8
+            lda player_vpos          ;3   6
+            sta player_vdelay        ;3   9
+            lda #$30                 ;2  11
+            sta PF0                  ;3  14
             ;ldx #$00                ;2  -- save instr (x is 0)
-            stx PF1                  ;3  11
-            stx PF2                  ;3  14
+            stx PF1                  ;3  17
+            stx PF2                  ;3  20
             ;ldx #BLACK              ;2  -- save inst (x is 0)
-            stx COLUBK               ;3  17
-            lda player_hmov_x        ;3  20
-            ldx #$d0                 ;2  22 ; adjust for resbl, trying to stay out of hmov window
-            sta HMP0                 ;3  25
-            stx HMBL                 ;3  28
+            stx COLUBK               ;3  23
+            stx HMP0                 ;3  26
+            ldx #$d0                 ;2  28 ; adjust for resbl, trying to stay out of hmov window
+            stx HMBL                 ;3  31
 
 ;--------------------
 ; transition to riders kernel
@@ -728,7 +787,6 @@ player_resp_loop
             iny                      ;2  18 ; save instr (y is ff)
             ldx #NUM_RIDERS - 1      ;2  20
             sty HMBL                 ;3  23
-            sty HMP0                 ;3  26
 riders_start
             jmp rider_A_prestart     ;3  32
 
@@ -751,15 +809,18 @@ rail_B_loop
             ;lda #BLACK            ;2   2 ; code size opt 
             inx                   ;2   2  ; x is ff
             stx COLUBK            ;3   5
-            lda #WHITE            ;2   7
-            sta COLUP0            ;3  10
-            sta COLUP1            ;3  13
-            ldx #$09              ;2  15 
+            stx REFP0             ;2   7
+            stx NUSIZ0            ;2   9
+            stx NUSIZ1            ;2  11
+            lda #WHITE            ;2  13
+            sta COLUP0            ;3  16
+            sta COLUP1            ;3  19
+            ldx #$07              ;2  21 
 logo_resp_loop
-            dex                   ;2  17
-            bpl logo_resp_loop    ;2  64 (19 + 9 * 5)
-            sta RESP0             ;3  67
-            sta RESP1             ;3  70
+            dex                   ;2  23
+            bpl logo_resp_loop    ;2  60 (25 + 7 * 5)
+            sta RESP0             ;3  63
+            sta RESP1             ;3  66
 
     ; SC 218 - 224
 
@@ -793,8 +854,8 @@ gameCheckHealth
             lda player_health
             bne gameContinue
 gameEnd
-            lda #0
-            sta game_state
+            ;lda #0 optimization x is 0
+            stx game_state
             lda #$0f
             sta game_dark
 gameContinue
@@ -1193,6 +1254,7 @@ rider_B_to_A_end_a
 
 ;-----------------------------------------------------------------------------------
 ; sprite graphics
+   ORG $F600
 
 FONT_0
         byte $3c,$7e,$66,$66,$66,$66,$7e,$3c; 8
@@ -1215,30 +1277,15 @@ FONT_8
 FONT_9
         byte $6,$6,$6,$7e,$7e,$66,$7e,$7e; 8
 
-    ORG $F600
-
-PLAYER_SPRITE_START
-PLAYER_SPRITE_0_CTRL
-    byte $0,$5,$15,$15,$15,$5,$f5,$5,$5,$f7,$35,$c7,$55,$d7,$65,$5,$f5,$5,$50,$10,$0,$0,$0,$0; 24
-PLAYER_SPRITE_0_GRAPHICS
-    byte $0,$8a,$92,$a2,$ce,$e6,$77,$7f,$7f,$f8,$ff,$f8,$ff,$f8,$ef,$77,$73,$b2,$f0,$e0,$f0,$60,$90,$90; 24
-PLAYER_SPRITE_1_CTRL
-    byte $0,$5,$f5,$f5,$5,$15,$f5,$5,$5,$5,$d7,$35,$d7,$55,$25,$5,$f5,$25,$30,$10,$0,$0,$0,$0; 24
-PLAYER_SPRITE_1_GRAPHICS
-    byte $0,$ab,$af,$a6,$c2,$c6,$e7,$fe,$fe,$ff,$f8,$ff,$f8,$ff,$ef,$77,$b3,$e4,$f0,$e0,$f0,$60,$90,$90; 24
-PLAYER_SPRITE_2_CTRL
-    byte $0,$5,$f5,$5,$f5,$5,$d5,$5,$5,$f7,$35,$c7,$55,$d7,$65,$5,$f5,$5,$40,$20,$0,$0,$0,$0; 24
-PLAYER_SPRITE_2_GRAPHICS
-    byte $0,$44,$44,$e5,$c5,$cf,$73,$7f,$7f,$f8,$ff,$f8,$ff,$f8,$ef,$77,$73,$b2,$78,$f0,$60,$90,$90,$0; 24
-PLAYER_SPRITE_3_CTRL
-    byte $0,$0,$5,$5,$f5,$5,$17,$5,$5,$d7,$15,$e7,$35,$f7,$25,$25,$15,$5,$25,$f5,$0,$0,$0,$0; 24
-PLAYER_SPRITE_3_GRAPHICS
-    byte $0,$66,$a4,$66,$63,$63,$d8,$e7,$ff,$f8,$7f,$f8,$7f,$f8,$7f,$3f,$7f,$7f,$ce,$f6,$f3,$60,$90,$90; 24
-
 SUN_SPRITE_LEFT ; 26
         byte $ff,$ff,$ff,$ff,$7f,$7f,$7f,$7f,$3f,$3f,$3f,$1f,$1f,$f,$f,$7,$3,$1,$0,$0,$0,$0,$0,$0,$0
 SUN_SPRITE_MIDDLE ; 26
         byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff,$3c,$0,$0,$0,$0,$0
+
+HORIZON_COLOR ; 14 bytes
+        byte CLOUD_ORANGE - 2, CLOUD_ORANGE, CLOUD_ORANGE + 2, CLOUD_ORANGE + 4, SKY_YELLOW, SKY_YELLOW + 2, SKY_YELLOW + 4, SKY_YELLOW + 2, SKY_YELLOW, WHITE_WATER, SKY_BLUE + 8, SKY_BLUE + 4, SKY_BLUE + 2, SKY_BLUE 
+HORIZON_COUNT ; 14 bytes
+        byte $0, $2, $4, $6, $7, $8, $b, $13, $16, $17, $18, $0, $2, $4 
 
 MOUNTAIN_PF0 ; 4
         byte $ff, $f0, $f0
@@ -1247,39 +1294,38 @@ MOUNTAIN_PF1 ; 4
 MOUNTAIN_PF2 ; 4
         byte $ff, $3f, $0f
 
-    ORG $F700
-
-RIDER_SPRITE_START
-RIDER_SPRITE_0_CTRL
-    byte $0,$5,$f5,$f5,$5,$5,$f5,$f5,$5,$17,$f5,$7,$f5,$f7,$e5,$5,$15,$5,$50,$0,$10,$0,$0,$0; 24
-RIDER_SPRITE_0_GRAPHICS
-    byte $0,$51,$49,$45,$77,$67,$6f,$7f,$7f,$f8,$ff,$f8,$ff,$f8,$f7,$ee,$ce,$4d,$3c,$38,$f0,$60,$90,$90; 24
-RIDER_SPRITE_1_CTRL
-    byte $0,$5,$15,$35,$f5,$f5,$5,$15,$5,$f5,$f7,$5,$f7,$f7,$e5,$5,$15,$25,$40,$0,$0,$0,$0,$0; 24
-RIDER_SPRITE_1_GRAPHICS
-    byte $0,$9f,$af,$9e,$86,$c6,$ef,$fe,$fe,$ff,$f8,$ff,$f8,$f8,$f7,$ee,$cd,$9c,$78,$70,$f0,$60,$90,$90; 24
-RIDER_SPRITE_2_CTRL
-    byte $0,$5,$f5,$5,$15,$15,$5,$5,$5,$17,$f5,$7,$f5,$f7,$e5,$5,$15,$5,$40,$0,$20,$0,$0,$0; 24
-RIDER_SPRITE_2_GRAPHICS
-    byte $0,$44,$22,$a7,$a3,$e7,$67,$7f,$7f,$f8,$ff,$f8,$ff,$f8,$f7,$ee,$ce,$4d,$1e,$3c,$60,$90,$90,$0; 24
-ROCK_0_CTRL
-    byte $0,$7,$27,$7,$25,$5,$5,$5,$5,$5,$5,$5,$25,$f5,$15,$10,$0,$0,$0,$0,$0,$10,$0,$30; 24
-ROCK_0_GRAPHICS
-    byte $0,$fc,$f8,$f8,$ff,$7e,$fc,$fe,$fe,$7e,$fc,$fe,$f8,$fc,$f8,$ff,$ff,$fe,$ff,$7e,$fe,$fc,$f8,$c0; 24
-
 RIDER_COLORS ; 16 bytes
         byte BLACK, BLACK, BLACK, BLACK, GREEN, GREEN, GREEN, GREEN, BROWN, RED, WHITE, YELLOW, BROWN, RED, WHITE, YELLOW
-        
-HORIZON_COLOR ; 14 bytes
-        byte CLOUD_ORANGE - 2, CLOUD_ORANGE, CLOUD_ORANGE + 2, CLOUD_ORANGE + 4, SKY_YELLOW, SKY_YELLOW + 2, SKY_YELLOW + 4, SKY_YELLOW + 2, SKY_YELLOW, WHITE_WATER, SKY_BLUE + 8, SKY_BLUE + 4, SKY_BLUE + 2, SKY_BLUE 
-HORIZON_COUNT ; 14 bytes
-        byte $0, $2, $4, $6, $7, $8, $b, $13, $16, $17, $18, $0, $2, $4 
 
 DC21_0 ; 6 bytes
 	    byte	$0,$c6,$a8,$a8,$a8,$c6; 6
 DC21_1 ; 6 bytes
         byte	$0,$e8,$88,$e8,$28,$e8; 6
-        
+
+    ORG $F700
+
+RIDER_SPRITE_START
+RIDER_SPRITE_0_CTRL
+    byte $5,$5,$f5,$f5,$5,$5,$f5,$f5,$5,$17,$f5,$7,$f5,$f7,$e5,$5,$15,$5,$50,$0,$10,$0,$0,$0; 24
+RIDER_SPRITE_0_GRAPHICS
+    byte $0,$51,$49,$45,$77,$67,$6f,$7f,$7f,$f8,$ff,$f8,$ff,$f8,$f7,$ee,$ce,$4d,$3c,$38,$f0,$60,$90,$90; 24
+RIDER_SPRITE_1_CTRL
+    byte $5,$5,$15,$35,$f5,$f5,$5,$15,$5,$f5,$f7,$5,$f7,$f7,$e5,$5,$15,$25,$40,$0,$0,$0,$0,$0; 24
+RIDER_SPRITE_1_GRAPHICS
+    byte $0,$9f,$af,$9e,$86,$c6,$ef,$fe,$fe,$ff,$f8,$ff,$f8,$f8,$f7,$ee,$cd,$9c,$78,$70,$f0,$60,$90,$90; 24
+RIDER_SPRITE_2_CTRL
+    byte $5,$5,$f5,$5,$15,$15,$5,$5,$5,$17,$f5,$7,$f5,$f7,$e5,$5,$15,$5,$40,$0,$20,$0,$0,$0; 24
+RIDER_SPRITE_2_GRAPHICS
+    byte $0,$44,$22,$a7,$a3,$e7,$67,$7f,$7f,$f8,$ff,$f8,$ff,$f8,$f7,$ee,$ce,$4d,$1e,$3c,$60,$90,$90,$0; 24
+RIDER_SPRITE_3_CTRL
+    byte $0,$0,$b5,$f5,$f5,$5,$f7,$15,$5,$27,$5,$7,$f5,$f7,$e5,$5,$f5,$5,$15,$15,$50,$0,$0,$0; 24
+RIDER_SPRITE_3_GRAPHICS
+    byte $0,$33,$4a,$4e,$43,$47,$f8,$e7,$ff,$f8,$fe,$f8,$fe,$f8,$7f,$fc,$fe,$fe,$ce,$96,$cf,$6,$9,$9; 24
+ROCK_0_CTRL
+    byte $0,$7,$27,$7,$25,$5,$5,$5,$5,$5,$5,$5,$25,$f5,$15,$10,$0,$0,$0,$0,$0,$10,$0,$30; 24
+ROCK_0_GRAPHICS
+    byte $0,$fc,$f8,$f8,$ff,$7e,$fc,$fe,$fe,$7e,$fc,$fe,$f8,$fc,$f8,$ff,$ff,$fe,$ff,$7e,$fe,$fc,$f8,$c0; 24
+                
 ;-----------------------------------------------------------------------------------
 ; the CPU reset vectors
 
