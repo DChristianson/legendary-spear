@@ -126,7 +126,10 @@ def find_offset_solution(compressedbits, solve_left=True, solve_right=False):
         leading_steps.append((0, 0, (0, 0, [0] * 8)))
 
     for a in paddings(first_nonzero_row):
-        solutions.put(SolutionItem(base_priority, leading_steps + [(0, 0, a)], compressedbits))
+        # prefix = list(itertools.takewhile(lambda b: b < 1, a[2]))
+        # cost = base_priority + len(prefix)
+        cost = base_priority
+        solutions.put(SolutionItem(cost, leading_steps + [(0, 0, a)], compressedbits))
 
     while not solutions.empty():
         item = solutions.get()
@@ -149,12 +152,19 @@ def find_offset_solution(compressedbits, solve_left=True, solve_right=False):
             if len(item.frontier) == 1:
                 return next_solution
             else:
-                cost = item.priority + abs(lmove) + abs(rmove) - 10
+                # if we want to keep on one side
+                # prefix = list(itertools.takewhile(lambda b: b < 1, candidate[2]))
+                # cost = item.priority + len(prefix)
+                # if want to minimize HMOV...
+                cost = item.priority + abs(lmove) #(abs(abs(lmove) - abs(rmove)) ** 2)
                 solutions.put(SolutionItem(cost, next_solution, item.frontier[1:]))
     raise Exception(f'cannot find solution at depth {max_depth}')
-            
+
+def bitb(b):
+    return '1' if b > 0 else '.'
+
 # variable resolution sprite
-def emit_varsprite8(varname, image, fp, reverse=False):
+def emit_varsprite8(varname, image, fp, reverse=False, debug=False):
     width, _ = image.size
     if not image.mode == 'RGBA':
         image = image.convert(mode='RGBA')
@@ -179,6 +189,16 @@ def emit_varsprite8(varname, image, fp, reverse=False):
         fp.write(f'{varname}_{name}\n'.upper())
         fp.write(f'    byte {value}; {len(col)}\n')
 
+    if debug:
+        # diagnostic output
+        cumulative_offset = 0
+        for offset, scale, bits in zip(left_delta, [cb.scale for cb in compressedbits], padded_bits):
+            pad = ' ' * (24 + cumulative_offset)
+            fp.write(f'; {offset:03d}: {pad}{"".join([bitb(b) * scale for b in bits])}\n')
+            cumulative_offset += offset
+
+
+ 
 # multi-player sprite
 def emit_spriteMulti(varname, image, fp, bits=24):
     width, height = image.size
@@ -200,6 +220,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Generate 6502 assembly for sprite graphics')
     parser.add_argument('--reverse', type=bool, default=False)
+    parser.add_argument('--debug', type=bool, default=False)
     parser.add_argument('--bits', type=int, choices=[8, 16, 24, 48], default=8)
     parser.add_argument('filenames', nargs='*')
 
@@ -223,6 +244,5 @@ if __name__ == "__main__":
                 elif width == 8:
                     emit_spriteMulti(varname, image, out, bits=8)
                 else:
-                    emit_varsprite8(varname, image, out, reverse=args.reverse)
-
+                    emit_varsprite8(varname, image, out, reverse=args.reverse, debug=args.debug)
         
