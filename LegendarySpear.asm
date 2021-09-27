@@ -78,6 +78,7 @@ rider_ctrl      ds 2
 rider_timer     ds 5
 rider_hpos      ds 5
 rider_colors    ds 5
+rider_move      ds 5
 rider_speed     ds 5
 rider_hit       ds 5
 rider_damaged   ds 5
@@ -134,6 +135,8 @@ init_rider_loop
             sta rider_hpos,x
             lda #$ff
             sta rider_damaged,x
+            lda #$10
+            sta rider_move,x
             dex
             bpl init_rider_loop
 
@@ -480,7 +483,7 @@ movePlayer_left_add
             adc #$0f 
             tax
             and #$0f
-            cmp #$02
+            cmp #$03
             bpl movePlayer_horiz_save_x
 movePlayer_left_limit
             ldx #$73
@@ -537,7 +540,8 @@ moveRider_loop
             bpl moveRider_noreset     ;2  13
             lda rider_speed,x         ;4  17
             sta rider_timer,x         ;4  29
-            lda #$10                  ;2  31
+            lda rider_move,x          ;-----
+            and #$f0
             clc                       ;2  33
             adc rider_hpos,x          ;4  37
             bvs moveRider_dec_hdelay  ;2  39
@@ -545,13 +549,16 @@ moveRider_loop
             jmp moveRider_noreset     ;3  46
 moveRider_dec_hdelay
             adc #$0f              ;2  42
-            cmp #$8f              ;2  44
-            beq moveRider_reset   ;2  46
-            sta rider_hpos,x      ;4  50  
+            tay
+            and #$0f
+            cmp #$0f
+            beq moveRider_reset
+            sty rider_hpos,x      ;4  50  
             jmp moveRider_noreset ;2  53
 moveRider_reset
             ; reset rider
             inc game_state         ;5  --
+            inc rider_move,x
             lda #RIDER_RESP_START  ;2  56
             sta rider_damaged,x    ;3  59
             sta rider_hpos,x       ;4  --
@@ -564,7 +571,7 @@ moveRider_skipEor
             and #$0f
             tay
             lda RIDER_COLORS,y
-            sta rider_colors,X
+            sta rider_colors,x
             beq moveRider_parallax
             tya 
             and #$03
