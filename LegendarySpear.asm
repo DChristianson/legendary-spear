@@ -73,10 +73,10 @@ GALLOP_PATTERN = $d8
 game_state      ds 1
 game_dark       ds 1
 sound_track     ds 1
-rider_animate   ds 1
-rider_ctrl      ds 2
-rider_timer     ds 5
-rider_hpos      ds 5
+rider_animate   ds 1 ; animation timer
+rider_tile      ds 5 ; rider animation tile
+rider_timer     ds 5 ; rider movement timer
+rider_hpos      ds 5 
 rider_colors    ds 5
 rider_move      ds 5
 rider_speed     ds 5
@@ -118,37 +118,8 @@ Reset
             sta PF0
             lda #$05
             sta CTRLPF
-
-init_game
-  ; rider positions
-
-            lda #>RIDER_SPRITE_START
-            sta rider_ctrl+1
-            lda #<RIDER_SPRITE_0_CTRL
-            sta rider_ctrl
-
-            ldx #NUM_RIDERS - 1
-init_rider_loop
-            lda #RIDER_GREEN_TYPE
-            sta rider_colors,x
-            lda #$70
-            sta rider_hpos,x
-            lda #$ff
-            sta rider_damaged,x
-            lda #$10
-            sta rider_move,x
-            dex
-            bpl init_rider_loop
-
-            ldx #$28
-            stx player_vpos
-            stx rider_pattern
             ldx #$0f
             stx game_dark
-            lda #GALLOP_SOUND
-            sta AUDC0
-            lda #$03
-            sta player_hpos
 
 newFrame
 
@@ -225,7 +196,7 @@ scoringLoop_player_hit
             clc                        ;2  44
             adc tmp                    ;3  47
             sta tmp                    ;3  50
-            lda #$08                   ;3  53
+            lda #$16                   ;3  53
             sta player_damaged         ;3  56
             sta rider_damaged,x        ;4  60
             ldy #$0                    ;2  62
@@ -260,9 +231,21 @@ damageLoop_incur
             sta player_health
 damageLoop_skip
 
-soundTrack_start
+gameAttract
             lda game_state
-            beq soundTrack_end
+            bne soundTrack_start
+            sta AUDV0 ; volume 0
+            sta AUDV1 ; volume 0
+            sta AUDC0
+            sta AUDC1
+            ldx #$28
+            stx player_vpos
+            stx rider_pattern
+            lda #$03
+            sta player_hpos
+            jmp soundTrack_end
+
+soundTrack_start
             lda player_animate
             bne soundTrack_end
             clc 
@@ -272,8 +255,8 @@ soundTrack_start
             jmp soundTrack_update
 soundTrack_clear
             bne soundTrack_lo
-            ;lda #GALLOP_PATTERN - optimization y is 0
-            sty sound_track ; save gallop pattern
+            lda #GALLOP_PATTERN 
+            sta sound_track ; save gallop pattern
 soundTrack_lo
             ;ldy #$00  - optimization y is 0
 soundTrack_update
@@ -287,7 +270,16 @@ soundTrack_end
 animatePlayer
             ldy player_tile
             lda game_state           
-            beq animatePlayer_end           
+            bne animatePlayer_start
+            dec player_animate
+            bpl animatePlayer_end
+            lda #$0f
+            cmp game_dark
+            beq animatePlayer_reset
+            inc game_dark
+            jmp animatePlayer_reset
+
+animatePlayer_start
             lda player_damaged
             beq animatePlayer_seq
             ldy #$03                   ; load damaged player graphics
@@ -300,14 +292,15 @@ animatePlayer_seq
             beq animatePlayer_go
             dec game_dark
 animatePlayer_go 
-            lda #PLAYER_ANIMATE_SPEED
-            sta player_animate
             iny
             cpy #$03
             bmi animatePlayer_save
             ldy #$00
 animatePlayer_save
             sty player_tile
+animatePlayer_reset
+            lda #PLAYER_ANIMATE_SPEED
+            sta player_animate
 animatePlayer_end
 
 
@@ -412,16 +405,18 @@ animatePlayer_fire_end
 movePlayer_game
             bit INPT4                ;3  11
             bne movePlayer_game_start_check ;2  13
+            lda game_dark
+            cmp #$0f
+            bne movePlayer_end_jmp
             inx                      ;2  15 save instr, x is 0
             stx player_charge        ;5  20
             jmp movePlayer_end
 movePlayer_game_start_check
             ldx player_charge
             beq movePlayer_end_jmp
-            lda player_score
-            ora player_health
-            bne movePlayer_end_jmp
+            lda #$00
             sta player_charge
+            sta player_score
             ldx #$ff
             stx player_health
             inc game_state
@@ -514,28 +509,10 @@ movePlayer_up
             beq movePlayer_down  ;3  36      
 movePlayer_end
 
-animateRider
-            dec rider_animate
-            bpl animateRider_end
-            lda rider_ctrl
-            cmp #<RIDER_SPRITE_2_CTRL
-            bne animateRider_skipCtrl0
-            lda #<RIDER_SPRITE_0_CTRL
-            jmp animateRider_savCtrl0
-animateRider_skipCtrl0
-            clc
-            adc #48
-animateRider_savCtrl0
-            sta rider_ctrl
-            ldx #RIDER_ANIMATE_SPEED
-            stx rider_animate
-animateRider_end
-
             ldx #NUM_RIDERS - 1
-
 moveRider_loop
             lda game_state            ;3   3    
-            beq moveRider_noreset     ;2   5
+            beq moveRider_init        ;2   5
             dec rider_timer,x         ;6  11
             bpl moveRider_noreset     ;2  13
             lda rider_speed,x         ;4  17
@@ -559,6 +536,7 @@ moveRider_reset
             ; reset rider
             inc game_state         ;5  --
             inc rider_move,x
+            inc rider_move,x
             lda #RIDER_RESP_START  ;2  56
             sta rider_damaged,x    ;3  59
             sta rider_hpos,x       ;4  --
@@ -577,20 +555,56 @@ moveRider_skipEor
             and #$03
             jmp moveRider_setSpeed
 moveRider_parallax
+            ldy #<ROCK_0_CTRL
+            sty rider_tile,x
             txa
             adc #$02
             lsr
 moveRider_setSpeed
             sta rider_speed,x
             jmp moveRider_end
+moveRider_init
+            lda #<RIDER_SPRITE_START
+            lda rider_tile,x
+            lda #RIDER_GREEN_TYPE
+            sta rider_colors,x
+            lda #$70
+            sta rider_hpos,x
+            lda #$ff
+            sta rider_damaged,x
+            lda #$10
+            sta rider_move,x
 moveRider_noreset
 moveRider_end
             dex                    ;2   90
             bpl moveRider_loop     ;2   92
 
+animateRider
+            dec rider_animate
+            bpl animateRider_end
+            ldx #RIDER_ANIMATE_SPEED
+            stx rider_animate
+            ldy #RIDER_GREEN_TYPE
+            ldx #NUM_RIDERS - 1
+animateRider_loop
+            lda rider_colors,x
+            beq animateRider_skip_tile
+            lda rider_tile,x
+            sec
+            sbc #48
+            cmp #<RIDER_SPRITE_START
+            bpl animateRider_save_tile
+            lda #<RIDER_SPRITE_2_CTRL
+animateRider_save_tile
+            sta rider_tile,x
+animateRider_skip_tile
+            dex
+            bpl animateRider_loop
+animateRider_end
+
             inx                    ; x is ff (save instruction)
 waitOnVBlank            
-            cpx TIM64T
+            cpx INTIM
             bmi waitOnVBlank
 
 ; -----------------------------------
@@ -896,7 +910,6 @@ gameEnd
             ;lda #0 optimization x is 0
             stx game_state
             lda #$0f
-            sta game_dark
 gameContinue
 
 frameEnd
@@ -1033,14 +1046,8 @@ rider_A_hmov; locating rider horizontally 2
 rider_A_hmov_0; from rider B
             lda rider_colors,x            ;4  15
             sta COLUP1                    ;3  18
-            bne rider_A_hmov_rock
-            lda #<ROCK_0_CTRL
+            lda rider_tile,x
             sta tmp_addr_0
-            jmp rider_A_hmov_rock_end
-rider_A_hmov_rock
-            lda rider_ctrl
-            sta tmp_addr_0
-rider_A_hmov_rock_end
             clc
             adc #24
             sta tmp_addr_1
@@ -1158,11 +1165,11 @@ rider_B_to_A_hmov
             jmp rider_A_hmov_0      ;3  12
 
 rider_B_prestart
-            lda #$0                ;3  49
-            sta COLUPF             ;3  52
-            lda rider_hpos,x       ;4  56
-            and $0f                ;2  58
-            tay                    ;2  60
+            lda rider_hpos,x       ;4  50
+            and $0f                ;2  52
+            tay                    ;2  54
+            lda #$0                ;3  57
+            sta COLUPF             ;3  60
             dey                    ;2  62
             bmi rider_B_start_0    ;2  64
             sty tmp                ;3  67
@@ -1183,12 +1190,12 @@ rider_B_resp; strobe resp
             bpl rider_B_resp        ;2  47  27 + 4 * 5
             sta RESP1               ;3  49
             sta HMP0                ;3  52
-            iny                     ;2  55 y is 0, save instr
+            iny                     ;2  54 y is 0, save instr
 rider_B_resp_end_0
-            sty COLUPF              ;3  57
-            lda rider_hpos,x        ;4  61
-            sta HMP1                ;3  64
-            dec player_vindex       ;5  69 ; exit B
+            lda rider_hpos,x        ;4  58
+            sta HMP1                ;3  61
+            dec player_vindex       ;5  66 ; exit B
+            sty COLUPF              ;3  69
             beq rider_B_to_A_hmov   ;2  71
 
 rider_B_hmov; locating rider horizontally
@@ -1204,14 +1211,8 @@ rider_B_hmov_a
             sta HMP0                ;3  26
             lda rider_colors,x      ;4  30
             sta COLUP1              ;3  33
-            bne rider_B_hmov_rock   ;2  35
-            lda #<ROCK_0_CTRL       ;2  37
+            lda rider_tile,x        ;-----    
             sta tmp_addr_0          ;3  40
-            jmp rider_B_hmov_rock_end ;3 43
-rider_B_hmov_rock
-            lda rider_ctrl          ;3  39
-            sta tmp_addr_0          ;3  42
-rider_B_hmov_rock_end
             clc                     ;2  45
             adc #24                 ;2  47 / 51
             sta tmp_addr_1          ;3  50
@@ -1239,9 +1240,9 @@ rider_B_loop
             sta NUSIZ1              ;3  42
             sta HMP1                ;3  45
             lda #$0                 ;2  47
-            sta COLUPF              ;3  50
-            dec player_vindex       ;5  55 ; exit B
-            beq rider_B_to_A_loop_a ;2  57
+            dec player_vindex       ;5  52 ; exit B
+            beq rider_B_to_A_loop_a ;2  54
+            sta COLUPF              ;3  57
 rider_B_loop_a
             dey                     ;5  62
             bpl rider_B_loop        ;2  64
@@ -1277,11 +1278,12 @@ rider_B_to_A_loop
             sta ENABL               ;3   6 ; a already 0 
             jmp rider_A_loop_body   ;3   9
 
-rider_B_to_A_loop_a; BUGBUG running out of cycles in this transition .. or not?
+rider_B_to_A_loop_a; 
             dey                       ;2  62 ; copy rider_A_loop_a
-            bpl rider_B_to_A_loop     ;2  64 
-            sta ENABL                 ;3  67
-            jmp rider_A_end           ;3  70
+            sta COLUPF                ;3  65
+            bpl rider_B_to_A_loop     ;2  67 
+            sta ENABL                 ;3  70
+            jmp rider_A_end           ;3  73
 
 rider_B_to_A_end_a
             lda #$0                ;2  37
@@ -1336,10 +1338,11 @@ RIDER_COLORS ; 16 bytes
 
 DC21_0 ; 6 bytes
 	    byte	$0,$c6,$a8,$a8,$a8,$c6; 6
-DC21_1 ; 6 bytes
-        byte	$0,$e8,$88,$e8,$28,$e8; 6
 
     ORG $F700
+
+DC21_1 ; 6 bytes
+        byte	$0,$e8,$88,$e8,$28,$e8; 6
 
 RIDER_SPRITE_START
 RIDER_SPRITE_0_CTRL
