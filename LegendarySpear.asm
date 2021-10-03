@@ -72,6 +72,7 @@ GALLOP_PATTERN = $d8
 
 game_state      ds 1
 game_dark       ds 1
+game_award      ds 1
 sound_track     ds 1
 rider_animate   ds 1 ; animation timer
 rider_tile      ds 5 ; rider animation tile
@@ -95,8 +96,10 @@ player_damaged  ds 1
 player_health   ds 1
 player_score    ds 1
 ; overlapping tmp vars
-tmp                ; used in rider pattern
+tmp              ; used in rider pattern
+tmp_award_color  ; used in horizon
 tmp_prev_ctrl ds 1 ; used in vblank kernels
+tmp_award_inc ds 1 ; used in horizon
 tmp_addr_0    ds 2 ; used in vblank kernels
 tmp_addr_1    ds 2 ; used in vblank kernels
 
@@ -385,17 +388,17 @@ stackPlayer_loop_end
 
 animatePlayer_eval_fire 
             ldx player_fire
-            beq animatePlayer_fire_end
+            beq animatePlayer_fire_inactive
             bmi animatePlayer_eval_fire_cooldown
             dex 
-            bne animatePlayer_fire_active
+            bne animatePlayer_fire_end
             ldx -#PLAYER_STRIKE_COUNT
             jmp animatePlayer_fire_end
 animatePlayer_eval_fire_cooldown
             inx 
             jmp animatePlayer_fire_end
-animatePlayer_fire_active
-            lda #$ff ; edit player graphic
+animatePlayer_fire_inactive
+            lda #$0f ; edit player graphic
             sta $e4
 animatePlayer_fire_end
             stx player_fire
@@ -535,7 +538,6 @@ moveRider_dec_hdelay
             jmp moveRider_noreset ;2  53
 moveRider_reset
             ; reset rider
-            inc game_state         ;5  --
             inc rider_move,x
             lda #RIDER_RESP_START  ;2  56
             sta rider_damaged,x    ;3  59
@@ -546,7 +548,7 @@ moveRider_reset
             eor #$8e               ;2  75
 moveRider_skipEor 
             sta rider_pattern      ;3  78 
-            and #$0f
+            and #$07
             tay
             lda RIDER_COLORS,y
             sta rider_colors,x
@@ -633,8 +635,8 @@ horizonScore_resp
             sta WSYNC
             sta HMOVE              ;3   3
             lda #WHITE             ;2   5
-            sta COLUP0             ;3   8
-            sta COLUP1             ;3  11
+            sta COLUP0               ;3  55
+            sta COLUP1               ;3  58
             ;ldx #0                 ;2  13 ; end of VBLANK
             inx                    ;2  13 ; end of VBLANK ; optimize code size - x is ff
             stx VBLANK             ;3  16
@@ -677,16 +679,16 @@ horizonScore_Loop
             sta COLUPF               ;3  28
             lda (tmp_addr_1),y       ;5  33
             sta GRP1                 ;3  36
-            lda #$00                      
-            sta COLUPF
-            sta PF1
-            dey                      ;2  23
-            bmi horizonScore_End     ;2  25
-            tya                      ;2  27
-            cmp HORIZON_COUNT,x      ;4  31
-            bpl horizonScore_Loop    ;2* 33
-            dex                      ;2  35
-            jmp horizonScore_Loop    ;3  38
+            lda #$00                 ;2  38       
+            sta COLUPF               ;3  41
+            sta PF1                  ;3  45
+            dey                      ;2  47
+            bmi horizonScore_End     ;2  49
+            tya                      ;2  60
+            cmp HORIZON_COUNT,x      ;4  64
+            bpl horizonScore_Loop    ;2* 66
+            dex                      ;2  68
+            jmp horizonScore_Loop    ;3  71
 
 horizonScore_End
 
@@ -721,10 +723,11 @@ horizonSun_resp
             sec                      ;2   6
             sbc game_dark            ;3   9
             sta COLUBK               ;3  12
-            lda #SUN_RED             ;2  17
-            sta COLUP0               ;3  20
-            sta COLUP1               ;3  23
-            dex                      ;2  25 ; hardcode
+            lda #SUN_RED - 2         ;2  17
+            sta tmp_award_color      ;3  20
+            lda game_award
+            sta tmp_award_inc   
+            dex                      ;2  22 ; hardcode
 
 ; SL 48 ... 72
             
@@ -742,20 +745,20 @@ horizonLoop
             sta GRP1                 ;3  26
             lda #0                   ;2  28
             sta REFP0                ;3  31
-            dey                      ;2  33
-            bmi horizonEnd           ;2  35
-            clc                      ;2  37
-            lda #1                   ;2  39
-horizonLoop_refp
-            sbc #1                   ;2  41
-            bpl horizonLoop_refp     ;2  48 (43 + 5)
-            lda #8                   ;2  50
-            sta REFP0                ;3  53
-            tya                      ;2  55
-            cmp HORIZON_COUNT,x      ;4  59
-            bpl horizonLoop          ;2* 61
-            dex                      ;2  62
-            jmp horizonLoop          ;3  65
+            lda tmp_award_color      ;3  34
+            adc tmp_award_inc        ;3  37
+            sta COLUP0               ;3  40
+            sta COLUP1               ;3  43
+            lda #8                   ;2  45
+            sta REFP0                ;3  48
+            dey                      ;2  50
+            bmi horizonEnd           ;2  52
+            tya                      ;2  54
+            cmp HORIZON_COUNT,x      ;4  58
+            bpl horizonLoop          ;2* 60
+            inc tmp_award_inc
+            dex                      ;2  67
+            jmp horizonLoop          ;3  70
 horizonEnd
 
 ;-------------------
@@ -902,7 +905,9 @@ doOverscan  sta WSYNC               ; wait a scanline
 gameCheck
             lda player_score
             cmp #WINNING_SCORE
-            beq gameEnd
+            bne gameCheckHealth
+            dec game_award
+            jmp gameEnd
 gameCheckHealth
             lda player_health
             bne gameContinue
@@ -1333,30 +1338,30 @@ MOUNTAIN_PF1 ; 4
 MOUNTAIN_PF2 ; 4
         byte $ff, $3f, $0f
 
-RIDER_COLORS ; 16 bytes
-        byte BLACK, BLACK, BLACK, BLACK, GREEN, GREEN, GREEN, GREEN, BROWN, RED, WHITE, YELLOW, BROWN, RED, WHITE, YELLOW
+RIDER_COLORS ; 8 bytes
+        byte BLACK, BLACK, BLACK, GREEN, GREEN, BROWN, RED, WHITE, YELLOW
 
 DC21_0 ; 6 bytes
 	    byte	$0,$c6,$a8,$a8,$a8,$c6; 6
 
-    ORG $F700
+   ; ORG $F700
 
 DC21_1 ; 6 bytes
         byte	$0,$e8,$88,$e8,$28,$e8; 6
 
 RIDER_SPRITE_START
 RIDER_SPRITE_0_CTRL
-    byte $5,$5,$f5,$f5,$5,$5,$f5,$f5,$5,$17,$f5,$7,$f5,$f7,$e5,$5,$15,$5,$50,$0,$10,$0,$0,$0; 24
+    byte $5,$5,$f5,$f5,$5,$5,$f5,$f5,$5,$17,$f5,$7,$f5,$a7,$45,$5,$15,$5,$50,$0,$10,$0,$0,$0; 24
 RIDER_SPRITE_0_GRAPHICS
-    byte $0,$51,$49,$45,$77,$67,$6f,$7f,$7f,$f8,$ff,$f8,$ff,$f8,$f7,$ee,$ce,$4d,$3c,$38,$f0,$60,$90,$90; 24
+    byte $0,$51,$49,$45,$77,$67,$6f,$7f,$7f,$f8,$ff,$f8,$ff,$fe,$f7,$ee,$ce,$4d,$3c,$38,$f0,$60,$90,$90; 24
 RIDER_SPRITE_1_CTRL
-    byte $5,$5,$15,$35,$f5,$f5,$5,$15,$5,$f5,$f7,$5,$f7,$f7,$e5,$5,$15,$25,$40,$0,$0,$0,$0,$0; 24
+    byte $5,$5,$15,$35,$f5,$f5,$5,$15,$5,$f5,$f7,$5,$f7,$a7,$45,$5,$15,$25,$40,$0,$0,$0,$0,$0; 24
 RIDER_SPRITE_1_GRAPHICS
-    byte $0,$9f,$af,$9e,$86,$c6,$ef,$fe,$fe,$ff,$f8,$ff,$f8,$f8,$f7,$ee,$cd,$9c,$78,$70,$f0,$60,$90,$90; 24
+    byte $0,$9f,$af,$9e,$86,$c6,$ef,$fe,$fe,$ff,$f8,$ff,$f8,$fe,$f7,$ee,$cd,$9c,$78,$70,$f0,$60,$90,$90; 24
 RIDER_SPRITE_2_CTRL
-    byte $5,$5,$f5,$5,$15,$15,$5,$5,$5,$17,$f5,$7,$f5,$f7,$e5,$5,$15,$5,$40,$0,$20,$0,$0,$0; 24
+    byte $5,$5,$f5,$5,$15,$15,$5,$5,$5,$17,$f5,$7,$f5,$a7,$45,$5,$15,$5,$40,$0,$20,$0,$0,$0; 24
 RIDER_SPRITE_2_GRAPHICS
-    byte $0,$44,$22,$a7,$a3,$e7,$67,$7f,$7f,$f8,$ff,$f8,$ff,$f8,$f7,$ee,$ce,$4d,$1e,$3c,$60,$90,$90,$0; 24
+    byte $0,$44,$22,$a7,$a3,$e7,$67,$7f,$7f,$f8,$ff,$f8,$ff,$fe,$f7,$ee,$ce,$4d,$1e,$3c,$60,$90,$90,$0; 24
 RIDER_SPRITE_3_CTRL
     byte $0,$0,$b5,$f5,$f5,$5,$f7,$15,$5,$27,$5,$7,$f5,$f7,$e5,$5,$f5,$5,$15,$15,$50,$0,$0,$0; 24
 RIDER_SPRITE_3_GRAPHICS
