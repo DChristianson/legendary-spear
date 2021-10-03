@@ -163,13 +163,13 @@ newFrame
 scoringLoop
             lda rider_colors,x         ;4   4
             cmp #RIDER_GREEN_TYPE      ;2   6
-            beq scoringLoop_wsync_end  ;2   8
+            beq scoringLoop_end  ;2   8
             tay                        ;2  10; store if it's a rock
             lda rider_damaged,x        ;4  14
             bpl scoringLoop_decay      ;2  16
             lda rider_hit,x            ;4  20
             and #$80                   ;2  22
-            beq scoringLoop_wsync_end  ;2  24
+            beq scoringLoop_end  ;2  24
             ; hit scored
             lda #$04                   ;2  26
             sec                        ;2  28
@@ -179,6 +179,7 @@ scoringLoop
             ldy player_fire            ;3  39
             beq scoringLoop_player_hit ;2  41
 scoringLoop_rider_hit
+            inc rider_move,x           ;----- rider will come back stronger
             sed                        ;2  43
             clc                        ;2  45
             adc player_score           ;2  47
@@ -196,24 +197,24 @@ scoringLoop_player_hit
             clc                        ;2  44
             adc tmp                    ;3  47
             sta tmp                    ;3  50
-            lda #$16                   ;3  53
+            lda #$1f                   ;3  53
             sta player_damaged         ;3  56
             sta rider_damaged,x        ;4  60
+            sta rider_move,x           ; -- slow this rider down
+scoringLoop_player_hit_end 
             ldy #$0                    ;2  62
             sty player_charge          ;3  65
-            jmp scoringLoop_wsync_end  ;3  68
+            jmp scoringLoop_end  ;3  68
 scoringLoop_decay
             sta AUDF1
             sta AUDV1
             dec rider_damaged,x
             bmi scoringLoop_rider_clear
             rol rider_colors,x
-            jmp scoringLoop_wsync_end
+            jmp scoringLoop_end
 scoringLoop_rider_clear
             lda #RIDER_GREEN_TYPE
             sta rider_colors,x
-scoringLoop_wsync_end
-            sta WSYNC ; only needed to shim logic that takes > 1 line
 scoringLoop_end
             dex
             bpl scoringLoop
@@ -535,7 +536,6 @@ moveRider_dec_hdelay
 moveRider_reset
             ; reset rider
             inc game_state         ;5  --
-            inc rider_move,x
             inc rider_move,x
             lda #RIDER_RESP_START  ;2  56
             sta rider_damaged,x    ;3  59
