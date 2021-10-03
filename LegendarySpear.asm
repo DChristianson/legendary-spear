@@ -997,19 +997,18 @@ rider_A_resp_l; strobe resp
 rider_A_to_B_start_l
             dey                      ;2  15
             dey                      ;2  17
-            dey                      ;2  19
-            lda player_fire          ;3  22
-            bne rider_A_to_B_resp_m  ;2  24
-            lda #$ff                 ;2  26
-            sta ENABL                ;3  29
-            sta HMBL                 ;3  32
+            lda player_fire          ;3  20
+            bne rider_A_to_B_resp_l  ;2  22 
+            lda #$ff                 ;2  24
+            sta ENABL                ;3  27
+            sta HMBL                 ;3  30
+            dey                      ;2  32
             dey                      ;2  34
             dey                      ;2  36
             SLEEP 2                  ;2  38 timing shim
 rider_A_to_B_resp_l          
-            dey                      ;2  40
-rider_A_to_B_resp_m
-            bpl rider_A_to_B_resp_l  ;2+ 57 / 57 (28 / 42 + 6 * 5 / 3 * 5)
+            dey                      ;2  40 / 25
+            bpl rider_A_to_B_resp_l  ;2+ 57 / 57 (27 / 42 + 6 * 5 / 3 * 5)
             SLEEP 2                  ;2  59 timing shim
             lda tmp                  ;3  62
             sta RESP1                ;3  65 
@@ -1164,7 +1163,7 @@ rider_B_resp_l; strobe resp
             bne rider_B_hmov        ;2  70
 
 rider_B_to_A_hmov
-            sta WSYNC               ;3   0 ;
+            sta WSYNC               ;3   0 ; may have enough cyles not to interleave
             sta HMOVE               ;3   3 ; transition from B_to_A
             sty ENABL               ;3   9 ; interleave with rider_A_hmov
             jmp rider_A_hmov_0      ;3  12
@@ -1278,7 +1277,7 @@ rider_B_end_jmp
             jmp rider_B_end_jmp      ;3  53
 
 rider_B_to_A_loop
-            sta WSYNC               ;3   0
+            sta WSYNC               ;3   0 ; may have enough cyles not to interleave
             sta HMOVE               ;3   3 ; process hmoves
             sta ENABL               ;3   6 ; a already 0 
             jmp rider_A_loop_body   ;3   9
@@ -1291,7 +1290,7 @@ rider_B_to_A_loop_a;
             jmp rider_A_end           ;3  73
 
 rider_B_to_A_end_a
-            lda #$0                ;2  37
+            ;lda #$0                ;2  37 optimization, a should be 0
             sta ENABL              ;3  40
             sta COLUPF             ;3  43
             jmp rider_A_end_a      ;3  46
@@ -1353,15 +1352,15 @@ RIDER_SPRITE_START
 RIDER_SPRITE_0_CTRL
     byte $5,$5,$f5,$f5,$5,$5,$f5,$f5,$5,$17,$f5,$7,$f5,$a7,$45,$5,$15,$5,$50,$0,$10,$0,$0,$0; 24
 RIDER_SPRITE_0_GRAPHICS
-    byte $0,$51,$49,$45,$77,$67,$6f,$7f,$7f,$f8,$ff,$f8,$ff,$fe,$f7,$ee,$ce,$4d,$3c,$38,$f0,$60,$90,$90; 24
+    byte $0,$51,$49,$45,$77,$67,$6f,$7f,$7f,$f8,$ff,$fc,$ff,$fe,$f7,$ee,$ce,$4d,$3c,$38,$f0,$60,$90,$90; 24
 RIDER_SPRITE_1_CTRL
     byte $5,$5,$15,$35,$f5,$f5,$5,$15,$5,$f5,$f7,$5,$f7,$a7,$45,$5,$15,$25,$40,$0,$0,$0,$0,$0; 24
 RIDER_SPRITE_1_GRAPHICS
-    byte $0,$9f,$af,$9e,$86,$c6,$ef,$fe,$fe,$ff,$f8,$ff,$f8,$fe,$f7,$ee,$cd,$9c,$78,$70,$f0,$60,$90,$90; 24
+    byte $0,$9f,$af,$9e,$86,$c6,$ef,$fe,$fe,$ff,$f8,$ff,$fc,$fe,$f7,$ee,$cd,$9c,$78,$70,$f0,$60,$90,$90; 24
 RIDER_SPRITE_2_CTRL
     byte $5,$5,$f5,$5,$15,$15,$5,$5,$5,$17,$f5,$7,$f5,$a7,$45,$5,$15,$5,$40,$0,$20,$0,$0,$0; 24
 RIDER_SPRITE_2_GRAPHICS
-    byte $0,$44,$22,$a7,$a3,$e7,$67,$7f,$7f,$f8,$ff,$f8,$ff,$fe,$f7,$ee,$ce,$4d,$1e,$3c,$60,$90,$90,$0; 24
+    byte $0,$44,$22,$a7,$a3,$e7,$67,$7f,$7f,$f8,$ff,$fc,$ff,$fe,$f7,$ee,$ce,$4d,$1e,$3c,$60,$90,$90,$0; 24
 RIDER_SPRITE_3_CTRL
     byte $0,$0,$b5,$f5,$f5,$5,$f7,$15,$5,$27,$5,$7,$f5,$f7,$e5,$5,$f5,$5,$15,$15,$50,$0,$0,$0; 24
 RIDER_SPRITE_3_GRAPHICS
