@@ -899,18 +899,21 @@ doOverscan  sta WSYNC               ; wait a scanline
             bne doOverscan
             lda #$01
             bit SWCHB
-            bne gameCheck
+            bne gameCheckHealth
             jmp Reset
 
-gameCheck
-            lda player_score
-            cmp #WINNING_SCORE
-            bne gameCheckHealth
-            dec game_award
-            jmp gameEnd
 gameCheckHealth
             lda player_health
+            beq gameEnd
+gameCheckWin
+            lda player_score
+            cmp #WINNING_SCORE
             bne gameContinue
+            dec game_award
+            lda #$01
+            and player_health
+            beq gameEnd
+            dec game_dark
 gameEnd
             ;lda #0 optimization x is 0
             stx game_state
