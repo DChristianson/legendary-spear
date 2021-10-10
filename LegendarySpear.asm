@@ -799,8 +799,6 @@ rail_A_loop
             inx                      ;2  33 save inst
             stx GRP0                 ;3  36
             stx GRP1                 ;3  39
-            stx NUSIZ0               ;3  45
-            stx NUSIZ1               ;3  48
             stx HMCLR                ;3  51
             stx player_below_rider   ;3  54
             lda player_charge        ;3  57
@@ -938,6 +936,7 @@ gameCheckWin
             dec game_dark
 gameEnd
             ;lda #0 optimization x is 0
+            stx player_charge
             stx game_state
 gameContinue
 
