@@ -55,7 +55,7 @@ PLAYER_CHARGE_TICKS = 64
 RIDER_RESP_START = $b8
 RIDER_GREEN_TYPE = GREEN
 RIDER_ROCK_TYPE = $00
-RIDER_HIT_BOX = RIDER_HEIGHT - 3
+RIDER_HIT_BOX = RIDER_HEIGHT - 8
 RAIL_HEIGHT = 6
 LOGO_HEIGHT = 6
 WINNING_SCORE = $99
@@ -159,8 +159,11 @@ newFrame
 
 ;---------------------
 ; scoring kernel
-
+            lda player_charge
+            beq scoringLoop_no_charge
             lda #0
+            sta player_below_rider
+scoringLoop_no_charge
             sta tmp              ; total damage
             ldx #NUM_RIDERS - 1 
             dec player_damaged
@@ -184,9 +187,7 @@ scoringLoop_damage_check
             sec                        ;2  28
             sbc rider_speed,x          ;4  32
             ldy player_below_rider
-            bmi scoringLoop_off_target
-            inc rider_move,x
-scoringLoop_off_target
+            bmi scoringLoop_player_hit
             ldy player_fire            ;3  39
             beq scoringLoop_player_hit ;2  41
 scoringLoop_rider_hit
@@ -931,14 +932,13 @@ gameCheckWin
             cmp #WINNING_SCORE
             bne gameContinue
             dec game_award
-            lda #$01
+            lda #$01          
             and player_health
             beq gameEnd
             dec game_dark
 gameEnd
             ;lda #0 optimization x is 0
             stx game_state
-            lda #$0f
 gameContinue
 
 frameEnd
@@ -1358,15 +1358,15 @@ RIDER_SPRITE_START
 RIDER_SPRITE_0_CTRL
     byte $5,$5,$f5,$f5,$5,$5,$f5,$f5,$5,$17,$f5,$7,$f5,$a7,$45,$5,$15,$5,$50,$0,$10,$0,$0,$0; 24
 RIDER_SPRITE_0_GRAPHICS
-    byte $0,$51,$49,$45,$77,$67,$6f,$7f,$7f,$f8,$ff,$fe,$ff,$fe,$f7,$ee,$ce,$4d,$3c,$38,$f0,$60,$90,$90; 24
+    byte $0,$51,$49,$45,$77,$67,$6f,$7f,$7f,$f8,$ff,$fc,$ff,$fe,$f7,$ee,$ce,$4d,$3c,$38,$f0,$60,$90,$90; 24
 RIDER_SPRITE_1_CTRL
     byte $5,$5,$15,$35,$f5,$f5,$5,$15,$5,$f5,$f7,$5,$f7,$a7,$45,$5,$15,$25,$40,$0,$0,$0,$0,$0; 24
 RIDER_SPRITE_1_GRAPHICS
-    byte $0,$9f,$af,$9e,$86,$c6,$ef,$fe,$fe,$ff,$f8,$ff,$fe,$fe,$f7,$ee,$cd,$9c,$78,$70,$f0,$60,$90,$90; 24
+    byte $0,$9f,$af,$9e,$86,$c6,$ef,$fe,$fe,$ff,$f8,$ff,$fc,$fe,$f7,$ee,$cd,$9c,$78,$70,$f0,$60,$90,$90; 24
 RIDER_SPRITE_2_CTRL
     byte $5,$5,$f5,$5,$15,$15,$5,$5,$5,$17,$f5,$7,$f5,$a7,$45,$5,$15,$5,$40,$0,$20,$0,$0,$0; 24
 RIDER_SPRITE_2_GRAPHICS
-    byte $0,$44,$22,$a7,$a3,$e7,$67,$7f,$7f,$f8,$ff,$fe,$ff,$fe,$f7,$ee,$ce,$4d,$1e,$3c,$60,$90,$90,$0; 24
+    byte $0,$44,$22,$a7,$a3,$e7,$67,$7f,$7f,$f8,$ff,$fc,$ff,$fe,$f7,$ee,$ce,$4d,$1e,$3c,$60,$90,$90,$0; 24
 RIDER_SPRITE_3_CTRL
     byte $0,$0,$b5,$f5,$f5,$5,$f7,$15,$5,$27,$5,$7,$f5,$f7,$e5,$5,$f5,$5,$15,$15,$50,$0,$0,$0; 24
 RIDER_SPRITE_3_GRAPHICS
