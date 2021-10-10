@@ -48,7 +48,6 @@ BROWN = $21
 RIDER_HEIGHT = 24
 NUM_RIDERS = 5
 PLAYER_COLOR = BLACK
-PLAYER_START_HEALTH = 10
 RIDER_ANIMATE_SPEED = 3
 PLAYER_ANIMATE_SPEED = 3
 PLAYER_STRIKE_COUNT = 16
@@ -56,6 +55,7 @@ PLAYER_CHARGE_TICKS = 64
 RIDER_RESP_START = $b8
 RIDER_GREEN_TYPE = GREEN
 RIDER_ROCK_TYPE = $00
+RIDER_HIT_BOX = RIDER_HEIGHT - 3
 RAIL_HEIGHT = 6
 LOGO_HEIGHT = 6
 WINNING_SCORE = $99
@@ -183,6 +183,10 @@ scoringLoop_damage_check
             lda #$04                   ;2  26
             sec                        ;2  28
             sbc rider_speed,x          ;4  32
+            ldy player_below_rider
+            bmi scoringLoop_off_target
+            inc rider_move,x
+scoringLoop_off_target
             ldy player_fire            ;3  39
             beq scoringLoop_player_hit ;2  41
 scoringLoop_rider_hit
@@ -211,7 +215,7 @@ scoringLoop_player_hit
             sta rider_damaged,x        ;4  60
             sta rider_move,x           ; -- slow this rider down
 scoringLoop_player_hit_end 
-            ldy #$0                    ;2  62
+            ;ldy #$0                   ;2  62 y is 0
             sty player_charge_delay    ;3  65
             sty player_charge
             jmp scoringLoop_end  ;3  68
@@ -454,26 +458,20 @@ movePlayer_skip_charge
             sty player_charge_delay       ; optimize, y = 0
 
 movePlayer_horiz_start
-            ldx player_fire      ;3   3
-            bne movePlayer_fire  ;2   5
-            bit SWCHA            ;3  11
-            beq movePlayer_right ;2  13
-            lsr                  ;2  15
-            bit SWCHA            ;3  18
-            beq movePlayer_left  ;2  20
+            ldx player_fire            ;3   3
+            bne movePlayer_fire        ;2   5
+            bit SWCHA                  ;3  11
+            beq movePlayer_right       ;2  13
+            lsr                        ;2  15
+            bit SWCHA                  ;3  18
+            beq movePlayer_left        ;2  20
             jmp movePlayer_vert_start  ;3  36
 movePlayer_fire
             bmi movePlayer_fire_retreat
             lda #$e0
-            ldx player_charge
-            beq movePlayer_right_add
-            asl
             jmp movePlayer_right_add
 movePlayer_fire_retreat
             lda #$20
-            ldx player_charge
-            beq movePlayer_left_add
-            asl
             jmp movePlayer_left_add
 movePlayer_right
             lda #$F0             ;2   8
@@ -482,11 +480,14 @@ movePlayer_right_add
             adc player_hpos            ;3  20
             bvc movePlayer_horiz_save  ;2  22
             adc #$00                   ; carry set
-            cmp #$77
-            bmi movePlayer_horiz_save_jmp
+            ldx player_fire
+            bne movePlayer_horiz_save
+            tax 
+            and #$0f
+            cmp #$06
+            bmi movePlayer_horiz_save_x
 movePlayer_right_limit
-            lda #$96
-movePlayer_horiz_save_jmp
+            lda #$95
             jmp movePlayer_horiz_save ;3  11
 movePlayer_left
             lda #$10             ;2  15
@@ -733,6 +734,7 @@ horizonSun_resp
             sta NUSIZ0               ;3  62
 
 ; SL 47
+horizonGap
             sta WSYNC                ;3   0
             sta HMOVE                ;3   3
             lda HORIZON_COLOR,x      ;4   4 
@@ -799,11 +801,12 @@ rail_A_loop
             stx NUSIZ0               ;3  45
             stx NUSIZ1               ;3  48
             stx HMCLR                ;3  51
-            lda player_fire          ;3  54
-            and player_charge        ;3  57
-            sta COLUP0               ;3  60
-            lda #8                   ;2  62
-            sta REFP0                ;3  65 
+            stx player_below_rider   ;3  54
+            lda player_charge        ;3  57
+            and player_fire          ;3  60
+            sta COLUP0               ;3  63
+            lda #8                   ;2  65
+            sta REFP0                ;3  68 
 
 ; ----------------------------------
 ; playfield kernel 
@@ -1128,9 +1131,11 @@ rider_A_to_B_loop
             jmp rider_B_loop        ;3  70
 
 rider_A_to_B_loop_a
-            stx player_below_rider  ;3  33
-            jsr rider_A_to_B_sub    ;25 58
-            jmp rider_B_loop_a      ;3  61
+            tya                     ;2  32
+            sbc #RIDER_HIT_BOX      ;2  34
+            sta player_below_rider  ;3  37
+            jsr rider_A_to_B_sub    ;25 62
+            jmp rider_B_loop_a      ;3  65
 
 ;-----------------------------------------------------------------------------------
 ; Rider B Pattern 
@@ -1229,18 +1234,20 @@ rider_B_hmov_a
             sta HMP0                ;3  26
             lda rider_colors,x      ;4  30
             sta COLUP1              ;3  33
-            lda rider_tile,x        ;-----    
+            lda rider_tile,x        ;4  37   
             sta tmp_addr_0          ;3  40
-            clc                     ;2  45
-            adc #24                 ;2  47 / 51
-            sta tmp_addr_1          ;3  50
-            lda #$00                ;2  52
-            sta HMP1                ;3  55 / 59
-            sta CXCLR               ;3  58 prep for collision
-            sta COLUPF              ;3  61
-            ldy #RIDER_HEIGHT - 1   ;2  63
-            dec player_vindex       ;5  68 ; exit B
-            beq rider_B_to_A_loop   ;2  70 / 74 (from a)
+            clc                     ;2  42
+            adc #24                 ;2  44 / 51
+            sta tmp_addr_1          ;3  47
+            lda #$00                ;2  49
+            sta HMP1                ;3  52 / 59
+            sta CXCLR               ;3  55 prep for collision
+            sta COLUPF              ;3  58
+            ldy #RIDER_HEIGHT - 1   ;2  60
+            dec player_vindex       ;5  65 ; exit B
+            bne rider_B_loop        ;2  67 / 74 (from a)
+            sta ENABL               ;3  70 ; a already 0 
+            jmp rider_A_loop        ;3  73
 
 rider_B_loop  
             sta WSYNC               ;3   0
@@ -1259,8 +1266,8 @@ rider_B_loop
             sta HMP1                ;3  45
             lda #$0                 ;2  47
             dec player_vindex       ;5  52 ; exit B
-            beq rider_B_to_A_loop_a ;2  54
-            sta COLUPF              ;3  57
+            sta COLUPF              ;3  55
+            beq rider_B_to_A_loop_a ;2  57
 rider_B_loop_a
             dey                     ;5  62
             bpl rider_B_loop        ;2  64
@@ -1275,33 +1282,24 @@ rider_B_end
             pla                     ;4  20
             sta NUSIZ0              ;3  23
             sta HMP0                ;3  26
-            dec player_vindex       ;5  31  
-            beq rider_B_to_A_end_a  ;2  33
-            lda CXPPMM              ;2  35     
-            sta rider_hit,X         ;4  39
+            lda CXPPMM              ;2  28     
+            sta rider_hit,x         ;4  32
+            dec player_vindex       ;5  37  
+            beq rider_B_to_A_end_a  ;2  39
 rider_B_end_a
             dex                      ;2  41
             ;bmi rider_B_end_jmp     ;2  -- ; optimization - can't end on B so no check
             jmp rider_B_prestart     ;3  44
 
-rider_B_to_A_loop
-            sta WSYNC               ;3   0 ; may have enough cyles not to interleave
-            sta HMOVE               ;3   3 ; process hmoves
-            sta ENABL               ;3   6 ; a already 0 
-            jmp rider_A_loop_body   ;3   9
-
 rider_B_to_A_loop_a; 
-            dey                       ;2  62 ; copy rider_A_loop_a
-            sta COLUPF                ;3  65
-            bpl rider_B_to_A_loop     ;2  67 
-            sta ENABL                 ;3  70
-            jmp rider_A_end           ;3  73
+            sta ENABL                 ;3  59
+            jmp rider_A_loop_a        ;3  62
 
 rider_B_to_A_end_a
-            ;lda #$0                ;2  37 optimization, a should be 0
-            sta ENABL               ;3  42
-            sta COLUPF              ;3  45
-            jmp rider_A_end_a       ;3  48
+            iny                     ;2  42 optimization, y should be ff
+            sty ENABL               ;3  45
+            sty COLUPF              ;3  48
+            jmp rider_A_end_a       ;3  51
 
 ;-----------------------------------------------------------------------------------
 ; sprite graphics
