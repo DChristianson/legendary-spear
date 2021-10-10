@@ -417,11 +417,11 @@ animatePlayer_fire_end
             ldx game_state           ;3   3    
             bne movePlayer           ;2   5
 movePlayer_game
+            ldx game_dark
+            cpx #$0f
+            bne movePlayer_end_jmp
             bit INPT4                ;3  11
             bne movePlayer_game_start_check ;2  13
-            lda game_dark
-            cmp #$0f
-            bne movePlayer_end_jmp
             inc player_charge_delay        ;5  20
             jmp movePlayer_end
 movePlayer_game_start_check
