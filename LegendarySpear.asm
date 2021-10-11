@@ -981,7 +981,8 @@ frameEnd
 ;
 ; possible improvements:
 ;  - could save a third of stack space by not pushing processor status and instead tracking
-;    stack pointer ... tradeoff is we would have to manage x register, currently used hold rider #
+;    stack pointer ... tradeoff is we would have to manage x register, currently used hold rider # 
+;    (done - we now use a zero page var to count down how many lines we need instead)
 ;  - use of the x register to hold rider # seems wasteful (we basically never touch it in 
 ;    any kernel)
 ;
@@ -1373,7 +1374,7 @@ ROCK_0_CTRL
     byte $0,$7,$27,$7,$25,$5,$5,$5,$5,$5,$5,$5,$25,$f5,$15,$10,$0,$0,$0,$0,$0,$10,$0,$30; 24
 ROCK_0_GRAPHICS
     byte $0,$fc,$f8,$f8; 4
-gameEnd
+gameEnd  ; optimization - use the inside of the rock graphics for code...
             ;lda #0 optimization x is 0
             ldy game_state
             bpl gameEnd_skip
@@ -1384,7 +1385,7 @@ gameEnd
             inc game_state
 gameEnd_skip
             jmp newFrame
-     byte $fc,$f8;,$c0; 3 optimization - get another byte
+     byte $fc,$f8;,$c0; 3 optimization - get another byte from the reset vector
 ;    byte $0,$fc,$f8,$f8,$ff,$7e,$fc,$fe,$fe,$7e,$fc,$fe,$f8,$fc,$f8,$ff,$ff,$fe,$ff,$7e,$fe,$fc,$f8,$c0; 24
                 
 ;-----------------------------------------------------------------------------------
