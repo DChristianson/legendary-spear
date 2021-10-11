@@ -216,7 +216,7 @@ scoringLoop_player_hit
             sta rider_damaged,x        ;4  60
             sta rider_move,x           ; -- slow this rider down
 scoringLoop_player_hit_end 
-            ;ldy #$0                   ;2  62 y is 0
+            ldy #$0                   ;2  62 y is 0
             sty player_charge_delay    ;3  65
             sty player_charge
             jmp scoringLoop_end  ;3  68
@@ -249,7 +249,7 @@ damageLoop_skip
 
 gameAttract
             lda game_state
-            bne soundTrack_start
+            bmi soundTrack_start
             sta AUDV0 ; volume 0
             sta AUDV1 ; volume 0
             ldx #$28
@@ -284,7 +284,7 @@ soundTrack_end
 animatePlayer
             ldy player_tile
             lda game_state           
-            bne animatePlayer_start
+            bmi animatePlayer_start
             dec player_animate
             bpl animatePlayer_end
             lda #$0f
@@ -415,7 +415,7 @@ animatePlayer_fire_end
 
             lda #$80                 ;3   8
             ldx game_state           ;3   3    
-            bne movePlayer           ;2   5
+            bmi movePlayer           ;2   5
 movePlayer_game
             ldx game_dark
             cpx #$0f
@@ -428,10 +428,11 @@ movePlayer_game_start_check
             ldx player_charge_delay
             beq movePlayer_end_jmp
             sty player_charge_delay
+            dec game_state
+            bpl movePlayer_end_jmp
             sty player_score
             ldx #$ff
             stx player_health
-            inc game_state
 movePlayer_end_jmp
             jmp movePlayer_end
 
@@ -534,7 +535,7 @@ movePlayer_end
             ldx #NUM_RIDERS - 1
 moveRider_loop
             lda game_state            ;3   3    
-            beq moveRider_init        ;2   5
+            bpl moveRider_init        ;2   5
             dec rider_timer,x         ;6  11
             bpl moveRider_noreset     ;2  13
             lda rider_speed,x         ;4  17
@@ -919,12 +920,12 @@ doOverscan  sta WSYNC               ; wait a scanline
             bne doOverscan
             lda #$01
             bit SWCHB
-            bne gameCheckHealth
+            bne gameCheck
             jmp Reset
 
-gameCheckHealth
+gameCheck
             lda player_health
-            beq gameEnd
+            beq gameEnd_jmp
 gameCheckWin
             lda player_score
             cmp #WINNING_SCORE
@@ -932,12 +933,10 @@ gameCheckWin
             dec game_award
             lda #$01          
             and player_health
-            beq gameEnd
+            beq gameEnd_jmp
             dec game_dark
-gameEnd
-            ;lda #0 optimization x is 0
-            stx player_charge
-            stx game_state
+gameEnd_jmp
+            jmp gameEnd
 gameContinue
 
 frameEnd
@@ -1373,7 +1372,20 @@ RIDER_SPRITE_3_GRAPHICS
 ROCK_0_CTRL
     byte $0,$7,$27,$7,$25,$5,$5,$5,$5,$5,$5,$5,$25,$f5,$15,$10,$0,$0,$0,$0,$0,$10,$0,$30; 24
 ROCK_0_GRAPHICS
-    byte $0,$fc,$f8,$f8,$ff,$7e,$fc,$fe,$fe,$7e,$fc,$fe,$f8,$fc,$f8,$ff,$ff,$fe,$ff,$7e,$fe,$fc,$f8,$c0; 24
+    byte $0,$fc,$f8,$f8; 4
+gameEnd
+            ;lda #0 optimization x is 0
+            ldy game_state
+            bpl gameEnd_skip
+            inc game_state
+            lda #$80
+            bit INPT4
+            bne gameEnd_skip
+            inc game_state
+gameEnd_skip
+            jmp newFrame
+     byte $fc,$f8;,$c0; 3 optimization - get another byte
+;    byte $0,$fc,$f8,$f8,$ff,$7e,$fc,$fe,$fe,$7e,$fc,$fe,$f8,$fc,$f8,$ff,$ff,$fe,$ff,$7e,$fe,$fc,$f8,$c0; 24
                 
 ;-----------------------------------------------------------------------------------
 ; the CPU reset vectors
