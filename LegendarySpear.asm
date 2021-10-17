@@ -129,11 +129,10 @@ Reset
 
 newFrame
 
-  ; Start of vertical blank processing
+    ; Start of vsync
             
             lda #0
             sta VBLANK
-            sta COLUBK              ; background colour to black
 
     ; 3 scanlines of vertical sync signal to follow
 
@@ -151,7 +150,7 @@ newFrame
 ;--------------------
 ; VBlank start
 
-            lda #1
+            lda #2
             sta VBLANK
 
             lda #42    ; vblank timer will land us ~ on scanline 34
@@ -1385,7 +1384,7 @@ gameEnd  ; optimization - use the inside of the rock graphics for code...
             inc game_state
 gameEnd_skip
             jmp newFrame
-     byte $fc,$f8;,$c0; 3 optimization - get another byte from the reset vector
+     byte $fc,$f8,$c0;
 ;    byte $0,$fc,$f8,$f8,$ff,$7e,$fc,$fe,$fe,$7e,$fc,$fe,$f8,$fc,$f8,$ff,$ff,$fe,$ff,$7e,$fe,$fc,$f8,$c0; 24
                 
 ;-----------------------------------------------------------------------------------
