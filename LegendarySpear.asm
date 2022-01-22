@@ -1189,7 +1189,7 @@ rider_B_prestart
             iny                    ;2  46 / 48 from a optimization, y is ff
             sty COLUPF             ;3  47
             lda rider_hpos,x       ;4  51
-            and $0f                ;2  53
+            and #$0f               ;2  53
             tay                    ;2  55
             dey                    ;2  57
             bmi rider_B_start_0    ;2  62
